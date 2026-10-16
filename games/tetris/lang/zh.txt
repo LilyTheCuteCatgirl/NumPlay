@@ -7,7 +7,7 @@ BEST	最高分
 SCORE	得分
 LEVEL	等级
 LINES	行数
-\n                HOW TO PLAY\n\n    - <LEFT> and <RIGHT> to move\n    - <DOWN> for soft drop\n    - <UP> for hard drop\n    - <OK> & <TOOLBOX> to rotate left and right\n    - <BACKSPACE> (<clear>) to hold the tetri\n    - <BACK> to pause\n\n    Every full line disappears\n    Get more points by clearing\n      multiple lines at once !\n    The level increases every 10 lines.\n    You lose when the stack reaches the top. \n    Hold the tetri to keep it for later !                                 	\n                  玩法说明\n\n    - 左/右方向键：左右移动\n    - 下方向键：加速下落\n    - 上方向键：直接落下\n    - <OK>/<工具箱>：向左/向右旋转\n    - <退格>（<clear>）：暂存方块\n    - <返回>：暂停\n\n    填满一行即可消除，\n    一次消除多行得分更高！\n    每消除 10 行升一级。\n    方块堆到顶部即失败。\n    暂存的方块可留待以后使用！
+\n                HOW TO PLAY\n\n    - <LEFT> and <RIGHT> to move\n    - <DOWN> for soft drop\n    - <UP> to rotate left and right \n    - <OK> & <TOOLBOX> for hard drop\n    - <BACKSPACE> (<clear>) to hold the tetri\n    - <BACK> to pause\n\n    Every full line disappears\n    Get more points by clearing\n      multiple lines at once !\n    The level increases every 10 lines.\n    You lose when the stack reaches the top. \n    Hold the tetri to keep it for later !                                 	\n                  玩法说明\n\n    - 左/右方向键：左右移动\n    - 下方向键：加速下落\n    - 上方向键：直接落下\n    - <OK>/<工具箱>：向左/向右旋转\n    - <退格>（<clear>）：暂存方块\n    - <返回>：暂停\n\n    填满一行即可消除，\n    一次消除多行得分更高！\n    每消除 10 行升一级。\n    方块堆到顶部即失败。\n    暂存的方块可留待以后使用！
 Ghost Piece	显示落点
 Yes	是
 No	否

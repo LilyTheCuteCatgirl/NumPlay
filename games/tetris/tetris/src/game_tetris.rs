@@ -42,7 +42,7 @@ fn vis_addon() {
 }
 
 /// The "How to Play" page (one line per line of the screen, 45 small letters wide).
-const CONTROLS: &str = T!("\n                HOW TO PLAY\n\n    - <LEFT> and <RIGHT> to move\n    - <DOWN> for soft drop\n    - <UP> for hard drop\n    - <OK> & <TOOLBOX> to rotate left and right\n    - <BACKSPACE> (<clear>) to hold the tetri\n    - <BACK> to pause\n\n    Every full line disappears\n    Get more points by clearing\n      multiple lines at once !\n    The level increases every 10 lines.\n    You lose when the stack reaches the top. \n    Hold the tetri to keep it for later !                                 ");
+const CONTROLS: &str = T!("\n                HOW TO PLAY\n\n    - <LEFT> and <RIGHT> to move\n    - <DOWN> for soft drop\n    - <UP> to rotate left and right\n    - <OK> & <TOOLBOX> for hard drop\n    - <BACKSPACE> (<clear>) to hold the tetri\n    - <BACK> to pause\n\n    Every full line disappears\n    Get more points by clearing\n      multiple lines at once !\n    The level increases every 10 lines.\n    You lose when the stack reaches the top. \n    Hold the tetri to keep it for later !                                 ");
 
 pub fn start() {
     let mut opt: [&mut Setting; 3] = [
@@ -184,10 +184,10 @@ const SOFT_DROP_SPEED: u64 = 33;
 const LEFT_KEY: u32 = key::LEFT;
 const RIGHT_KEY: u32 = key::RIGHT;
 const SOFT_DROP_KEY: u32 = key::DOWN;
-const HARD_DROP_KEY: u32 = key::UP;
+const HARD_DROP_KEY: u32 = key::OK;
 const PAUSE_KEY: u32 = key::BACK;
 const RIGHT_ROTATION_KEY: u32 = key::TOOLBOX;
-const LEFT_ROTATION_KEY: u32 = key::OK;
+const LEFT_ROTATION_KEY: u32 = key::UP;
 const HOLD_KEY: u32 = key::BACKSPACE;
 
 const DEATH_MENU: MenuConfig = MenuConfig {
