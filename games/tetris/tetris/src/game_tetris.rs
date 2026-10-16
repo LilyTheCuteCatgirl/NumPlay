@@ -278,7 +278,7 @@ pub fn game(
     };
     let mut blockers = Blockers {
         hold: false,
-        hard_drop: false,
+        hard_drop: start_keys.key_down(HARD_DROP_KEY),
         soft_drop: false,
     };
 
