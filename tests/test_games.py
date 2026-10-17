@@ -54,8 +54,8 @@ GAMES = {
                          (3500, "ok", 250)), 5500,
                  presses((1500, "ok", 250), (2000, "right", 250), (2500, "ok", 250), (3000, "left", 250),
                          (3500, "ok", 250)), 5500),
-    "tetris": ("Tetris.nwa", "tetris.sav", presses((1200, "ok")) + every(2500, 7000, 500, "up"), 8000,
-               presses((1200, "ok"), (2500, "ok")), 5000),
+     "tetris": ("Tetris.nwa", "tetris.sav", presses((1200, "ok")) + every(2500, 7000, 500, "ok"), 8000,
+            presses((1200, "ok"), (2500, "ok")), 5000),
     # add-ons, the Counter (5th), count to 2; next time it opens there: one more
     "numvisuals": ("NumVisuals.nwa", "numvisuals.sav",
                    presses((1500, "ok"), (2000, "right"), (2300, "right"), (2600, "right"), (2900, "right"),
