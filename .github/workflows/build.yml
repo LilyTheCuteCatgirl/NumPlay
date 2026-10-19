@@ -43,6 +43,13 @@ jobs:
 
       - name: Build
         run: make -j4 nwa apps check NWLINK=nwlink && make lang NWLINK=nwlink
+        
+      - uses: actions/upload-artifact@v4
+        with:
+          name: nwa
+          path: |
+            build/NumPlay*.nwa
+            build/apps/*.nwa
 
       - name: Test
         run: |
@@ -56,12 +63,7 @@ jobs:
           make -C games/championisland host test
           make -C games/undertale host test
 
-      - uses: actions/upload-artifact@v4
-        with:
-          name: nwa
-          path: |
-            build/NumPlay*.nwa
-            build/apps/*.nwa
+
 
       - name: Release
         if: startsWith(github.ref, 'refs/tags/v') || (github.ref == 'refs/heads/main' && github.event_name != 'pull_request')
