@@ -13,13 +13,15 @@ To run:
 
 The calculator skin does not depend on emu_live_skin.py; emu.py is still needed.
 
-NumPlay Live Emulator V20 (stable):
+NumPlay Live Emulator V22 (USB push with live progress, opt-in):
 - Single file / Live development, automatic native Windows builds and reloads;
 - calculator skin / pixel-exact 320x240 screen, keyboard highlights;
 - tear-reduced frame presentation, usable Epsilon firmware text;
 - N0120 display-transfer timings calibrated using physical NumWorks results;
 - fixed 550 MHz N0120 / 216 MHz older-model baseline (approximate timing);
-- optional host-adaptive clock and opt-in speed diagnostics.
+- optional host-adaptive clock and opt-in speed diagnostics;
+- manual confirmed USB upload with a live progress bar and USB activity log;
+- installer percentages are shown only when nwlink actually reports them.
 
 This is not a cycle-accurate Cortex-M7 emulator: demanding NumDrive scenes can
 still be host-CPU-limited. This release excludes the experimental SRAM hooks and
@@ -30,8 +32,10 @@ from __future__ import annotations
 import argparse
 import os
 import queue
+import re
 import subprocess
 import signal
+import tempfile
 from collections import deque
 import shutil
 import struct
@@ -1503,12 +1507,24 @@ class CalculatorSkinApp(LiveApp):
         self._builder_busy = False
         self._builder_stopping = False
         self._simple_mode_ui = True
+        # A physical USB flash must never be triggered by auto-build/reload.
+        self._upload_running = False
+        self._upload_events = queue.Queue()
+        self._upload_log = deque(maxlen=120)
+        self._upload_start_wall: float | None = None
+        self._upload_progress_is_reported = False
+        self._upload_log_window = None
+        self._upload_log_text = None
+        self.upload_status = tk.StringVar(master=root, value="USB upload: idle")
+        self.upload_activity = tk.StringVar(master=root, value="")
+        self.upload_elapsed = tk.StringVar(master=root, value="")
         super().__init__(root, initial, nwlink, model, system, False,
                          max_sleep_ms=max_sleep_ms, profile_speed=profile_speed)
         # Avoid the original fallback's ambiguous 'newest local file' behavior.
         self.watch_var.set(False)
         self.follow_var.set(False)
         self._builder_poll_id = self.root.after(120, self._poll_builder)
+        self._upload_poll_id = self.root.after(160, self._poll_upload)
         if start_live:
             self.root.after(260, self._start_builder)
 
@@ -1551,7 +1567,10 @@ class CalculatorSkinApp(LiveApp):
         self._options_menu.add_command(label="Focus calculator keyboard", command=self.refocus_input)
         self._options_menu.add_separator()
         self._options_menu.add_command(label="Build log…", command=self._show_build_log)
+        self._options_menu.add_command(label="USB upload log…", command=self._show_upload_log)
         self._options_menu.add_command(label="Open compiled files folder", command=self._open_dist)
+        self._options_menu.add_command(label="Official NumWorks web installer ↗",
+                                       command=lambda: webbrowser.open("https://my.numworks.com/apps"))
         self._options_menu.add_separator()
         self.auto_clock_var = tk.BooleanVar(master=self.root, value=self.auto_clock[0])
         self.clock_option = tk.StringVar(master=self.root, value=(
@@ -1651,7 +1670,29 @@ class CalculatorSkinApp(LiveApp):
         self.reload_button.grid(row=0, column=0, sticky="ew", padx=(0, 4))
         self.pause_button = self._button(action_panel, "Pause", self.toggle_pause)
         self.pause_button.grid(row=0, column=1, sticky="ew", padx=(4, 0))
-        tk.Frame(inner, height=1, bg=PANEL_2).pack(fill="x", pady=(15, 10))
+        # Optional, explicitly confirmed physical hardware action. Never part
+        # of the automatic build loop and hidden behind no ambiguous toggle.
+        self.upload_button = self._button(inner, "Push current .nwa to calculator…", self._push_current_build)
+        self.upload_button.pack(fill="x", pady=(12, 3))
+        self.upload_status_label = tk.Label(inner, textvariable=self.upload_status, bg=PANEL, fg=MUTED,
+                                            font=("Segoe UI", 8), wraplength=270,
+                                            justify="left", anchor="w")
+        self.upload_status_label.pack(fill="x", pady=(0, 2))
+        # This is a separate progress bar from the native build watcher. USB
+        # progress is NOT guessed from elapsed time. An animated bar means the
+        # installer is still running; switch to a percentage only if nwlink
+        # explicitly reports a transfer percentage in its output.
+        self.upload_progress_panel = tk.Frame(inner, bg=PANEL)
+        self.upload_progress = ttk.Progressbar(self.upload_progress_panel,
+                                               mode="indeterminate", maximum=100)
+        self.upload_progress.pack(fill="x", pady=(5, 3))
+        tk.Label(self.upload_progress_panel, textvariable=self.upload_elapsed,
+                 bg=PANEL, fg=MUTED, font=("Segoe UI", 8),
+                 anchor="w").pack(fill="x")
+        tk.Label(self.upload_progress_panel, textvariable=self.upload_activity,
+                 bg=PANEL, fg=MUTED, font=("Segoe UI", 8),
+                 anchor="w", justify="left", wraplength=265).pack(fill="x", pady=(2, 0))
+        tk.Frame(inner, height=1, bg=PANEL_2).pack(fill="x", pady=(12, 9))
         tk.Label(inner, textvariable=self.rate_label, bg=PANEL, fg=ACCENT,
                  font=("Segoe UI", 9, "bold"), anchor="w").pack(fill="x")
         tk.Label(inner, textvariable=self.input_status, bg=PANEL, fg=MUTED,
@@ -1668,6 +1709,7 @@ class CalculatorSkinApp(LiveApp):
                  anchor="w", justify="left", wraplength=282,
                  padx=12, pady=10, font=("Segoe UI", 9)).pack(fill="x", side="bottom")
         self._configure_mode_panel()
+        self._update_upload_controls()
         self.root.focus_force()
         self.root.after(150, self.refocus_input)
 
@@ -1708,6 +1750,7 @@ class CalculatorSkinApp(LiveApp):
             self.watch_var.set(False)
             self._stop_builder()
             self._set_build_state("Single file mode", "No background compile or auto-reload")
+        self._update_upload_controls()
         self.root.after(75, self.refocus_input)
 
     def open_file(self):
@@ -1917,6 +1960,7 @@ class CalculatorSkinApp(LiveApp):
                 else:
                     self._set_build_state("Watching for changes", "Edit and save a game to rebuild",
                                           busy=False)
+        self._update_upload_controls()
         self._builder_poll_id = self.root.after(120, self._poll_builder)
 
     def _append_log(self, line):
@@ -1972,7 +2016,239 @@ class CalculatorSkinApp(LiveApp):
         else:
             self.set_status(f"Compiled files: {path}")
 
+    def _upload_source(self):
+        """Choose exactly what the user is looking at, never a random newest app."""
+        if self.mode_var.get() == "live":
+            if self._builder_busy or not self._builder_ready:
+                return None
+            return LIVE_NWA
+        return self.current
+
+    def _update_upload_controls(self):
+        if not hasattr(self, "upload_button"):
+            return
+        source = self._upload_source()
+        available = (not self._upload_running and source is not None
+                     and source.is_file() and source.suffix.lower() == ".nwa")
+        self.upload_button.configure(state="normal" if available else "disabled",
+                                     text=("Pushing to calculator…" if self._upload_running else
+                                           "Push current build to calculator…" if self.mode_var.get() == "live" else
+                                           "Push selected .nwa to calculator…"))
+
+    def _show_upload_log(self):
+        """A small live log for USB details that nwlink prints to stdout."""
+        if self._upload_log_window is not None:
+            try:
+                self._upload_log_window.lift()
+                self._upload_log_window.focus_force()
+                return
+            except tk.TclError:
+                self._upload_log_window = None
+        win = tk.Toplevel(self.root)
+        win.title("NumPlay · USB upload log")
+        win.geometry("680x350")
+        win.configure(bg=BG)
+        frame = tk.Frame(win, bg=BG)
+        frame.pack(fill="both", expand=True, padx=8, pady=8)
+        scroll = tk.Scrollbar(frame)
+        scroll.pack(side="right", fill="y")
+        box = tk.Text(frame, bg="#0c131d", fg=FG, relief="flat", bd=0,
+                      font=("Consolas", 9), padx=10, pady=10, wrap="word",
+                      yscrollcommand=scroll.set)
+        box.pack(side="left", fill="both", expand=True)
+        scroll.configure(command=box.yview)
+        box.insert("end", "\n".join(self._upload_log) or "No USB install activity yet.")
+        box.configure(state="disabled")
+        self._upload_log_window = win
+        self._upload_log_text = box
+
+        def close():
+            self._upload_log_window = None
+            self._upload_log_text = None
+            win.destroy()
+        win.protocol("WM_DELETE_WINDOW", close)
+
+    def _append_upload_log(self, line: str):
+        self._upload_log.append(line)
+        box = self._upload_log_text
+        if box is not None:
+            try:
+                box.configure(state="normal")
+                box.insert("end", line + "\n")
+                box.see("end")
+                box.configure(state="disabled")
+            except tk.TclError:
+                self._upload_log_window = None
+                self._upload_log_text = None
+
+    def _push_current_build(self):
+        """Physical USB install: deliberately NEVER called by the build watcher."""
+        if self._upload_running:
+            return
+        source = self._upload_source()
+        if source is None or not source.is_file() or source.suffix.lower() != ".nwa":
+            messagebox.showwarning("Push to NumWorks", "No finished .nwa is ready.\n\n"
+                                   "Choose a file or finish a successful Live build first.",
+                                   parent=self.root)
+            return
+        try:
+            source = source.resolve(strict=True)
+            if source.stat().st_size < 1024:
+                raise ValueError("The .nwa file is unusually small")
+            # Snapshot BEFORE confirmation; a concurrent compiler can publish a
+            # new file without changing the exact bytes chosen for this push.
+            snapshot_dir = tempfile.TemporaryDirectory(prefix="numplay-usb-push-")
+            snapshot = Path(snapshot_dir.name) / source.name
+            shutil.copy2(source, snapshot)
+        except (OSError, ValueError) as exc:
+            try:
+                snapshot_dir.cleanup()
+            except (NameError, OSError):
+                pass
+            messagebox.showerror("Push to NumWorks", f"Cannot prepare .nwa:\n{exc}",
+                                 parent=self.root)
+            return
+        warning = (
+            f"Send {source.name} ({snapshot.stat().st_size:,} bytes) to your real NumWorks?\n\n"
+            "WARNING: nwlink install-nwa REPLACES the calculator's installed "
+            "third-party applications; it does not just patch NumPlay. "
+            "Saved application data may be affected.\n\n"
+            "Back up important data and keep copies of any other apps you want to reinstall.\n\n"
+            "Connect the calculator with USB and leave it on its CONNECTED screen. "
+            "Close any NumWorks browser tab that is using the USB connection. "
+            "Do NOT unplug the cable until installation finishes.\n\n"
+            "Proceed with this potentially destructive USB installation?"
+        )
+        if not messagebox.askyesno("Confirm calculator installation", warning,
+                                   icon="warning", parent=self.root, default="no"):
+            snapshot_dir.cleanup()
+            return
+        self._upload_running = True
+        self._upload_start_wall = time.monotonic()
+        self._upload_progress_is_reported = False
+        self._upload_log.clear()
+        self._append_upload_log(f"Installing {source.name} ({snapshot.stat().st_size:,} bytes)")
+        self.upload_status.set("Starting USB installer…")
+        self.upload_activity.set("Waiting for nwlink to connect to the calculator")
+        self.upload_elapsed.set("Elapsed: 0 s · Keep USB connected")
+        self.upload_progress.configure(mode="indeterminate")
+        self.upload_progress_panel.pack(fill="x", pady=(2, 7), after=self.upload_status_label)
+        self.upload_progress.start(12)
+        self.set_status("Installing on physical NumWorks — do not unplug")
+        self._update_upload_controls()
+        threading.Thread(target=self._upload_worker,
+                         args=(snapshot, snapshot_dir), daemon=True).start()
+
+    def _upload_worker(self, snapshot: Path, snapshot_dir):
+        """Run the installer off Tk's thread, STREAMING its output to the UI.
+
+        nwlink's CLI may suppress numeric progress when stdout isn't a TTY;
+        in that case the UI uses a genuine indeterminate activity bar instead
+        of inventing completion percentages.
+        """
+        try:
+            cmd = [self.nwlink, "install-nwa", str(snapshot)]
+            flags = getattr(subprocess, "CREATE_NO_WINDOW", 0) if os.name == "nt" else 0
+            with subprocess.Popen(cmd, cwd=str(REPO_ROOT),
+                                  stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+                                  text=True, encoding="utf-8", errors="replace",
+                                  stdin=subprocess.DEVNULL, creationflags=flags,
+                                  bufsize=1) as proc:
+                self._upload_events.put(("started", None))
+                if proc.stdout is not None:
+                    for raw in proc.stdout:
+                        # Strip ANSI sequences and control chars. Progress
+                        # tools sometimes redraw a line with CR rather than NL.
+                        for part in re.split(r"[\r\n]+", raw):
+                            part = re.sub(r"\x1b\[[0-9;]*[A-Za-z]", "", part).strip()
+                            if part:
+                                self._upload_events.put(("line", part[-450:]))
+                returncode = proc.wait()
+            self._upload_events.put(("done", returncode))
+        except Exception as exc:
+            self._upload_events.put(("error", str(exc)))
+        finally:
+            snapshot_dir.cleanup()
+
+    def _poll_upload(self):
+        if self._closing:
+            return
+        # A clock is honest even if nwlink doesn't print transfer progress.
+        if self._upload_running and self._upload_start_wall is not None:
+            elapsed = int(max(0, time.monotonic() - self._upload_start_wall))
+            self.upload_elapsed.set(f"Elapsed: {elapsed} s · Keep USB connected")
+        while True:
+            try:
+                kind, value = self._upload_events.get_nowait()
+            except queue.Empty:
+                break
+            if kind == "started":
+                self.upload_status.set("USB installer running…")
+                self.upload_activity.set("Connecting / transferring · Waiting for nwlink")
+                continue
+            if kind == "line":
+                line = str(value)
+                self._append_upload_log(line)
+                # Honor a real percentage IF nwlink prints one. It describes
+                # the CURRENT CLI operation, not necessarily whole-file upload.
+                match = re.search(r"(?<!\d)(100|[1-9]?\d)(?:\.\d+)?\s*%", line)
+                if match:
+                    pct = int(match.group(1))
+                    if not self._upload_progress_is_reported:
+                        self.upload_progress.stop()
+                        self.upload_progress.configure(mode="determinate", value=pct)
+                        self._upload_progress_is_reported = True
+                    else:
+                        self.upload_progress.configure(value=pct)
+                    self.upload_activity.set(f"nwlink reports {pct}% for its current operation")
+                else:
+                    self.upload_activity.set(f"nwlink: {line[:130]}")
+                continue
+            self._upload_running = False
+            self._upload_start_wall = None
+            self.upload_progress.stop()
+            self.upload_progress_panel.pack_forget()
+            if kind == "done":
+                code = int(value)
+                if code == 0:
+                    self.upload_status.set("USB installation completed ✓")
+                    self.set_status("NumWorks installation reported success")
+                    self._append_upload_log("nwlink exited with code 0 (success)")
+                    messagebox.showinfo("NumWorks", "nwlink reported a successful upload.\n\n"
+                                        "Check the calculator for the newly installed app.",
+                                        parent=self.root)
+                else:
+                    self.upload_status.set(f"USB install failed (exit {code})")
+                    self._append_upload_log(f"nwlink exited with code {code}")
+                    self._upload_failure("\n".join(list(self._upload_log)[-14:]) or
+                                         f"nwlink exited with code {code}")
+            elif kind == "error":
+                self.upload_status.set("USB install could not start")
+                self._append_upload_log(f"Error: {value}")
+                self._upload_failure(str(value))
+            self._update_upload_controls()
+        self._upload_poll_id = self.root.after(160, self._poll_upload)
+
+    def _upload_failure(self, detail):
+        self.set_status("USB upload failed — current .nwa is safe on disk")
+        msg = ("The USB installer reported a problem:\n\n" + detail[-1700:] +
+               "\n\nCheck the cable and calculator connection. "
+               "The NumWorks website is an alternative.\n\n"
+               "Open https://my.numworks.com/apps now?")
+        if messagebox.askyesno("USB upload failed", msg, parent=self.root):
+            webbrowser.open("https://my.numworks.com/apps")
+
     def on_close(self):
+        if self._upload_running:
+            messagebox.showwarning("USB installation in progress",
+                                   "Please let nwlink finish before closing the emulator. "
+                                   "Do NOT unplug the NumWorks during installation.",
+                                   parent=self.root)
+            return
+        try:
+            self.root.after_cancel(self._upload_poll_id)
+        except (tk.TclError, AttributeError):
+            pass
         self._stop_builder()
         try:
             self.root.after_cancel(self._builder_poll_id)
