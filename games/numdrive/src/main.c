@@ -19,6 +19,11 @@ const uint32_t eadk_api_level __attribute__((section(".rodata.eadk_api_level")))
 #endif
 #endif
 
+/* read by tools/emu.py: frames drawn while driving, the slowest, those over 33 ms, and the time spent in
+ * the simulation and in drawing */
+uint32_t perf_frames __attribute__((used)), perf_max __attribute__((used)), perf_slow __attribute__((used));
+uint32_t perf_steps __attribute__((used)), perf_sim_ms __attribute__((used)), perf_draw_ms __attribute__((used));
+
 enum { ST_PLAY, ST_CARD, ST_LEVELS, ST_QUIT };
 #define SHOT_FRAMES 10 /* viewfinder shown before the photo */
 
@@ -163,13 +168,17 @@ int main(int argc, char **argv) {
       }
       uint8_t b = ((k & KEY(K_LEFT)) ? 1 : 0) | ((k & KEY(K_RIGHT)) ? 2 : 0);
       bool ending = false;
+      uint32_t t0 = plat_millis();
       for (int s = 0; s < steps && !ending; s++) {
         sim_step(win_timer >= 0 || lose_timer >= 0 ? 0 : b);
         hud_tick(b);
         if (win_timer > 0) win_timer--;
         if (lose_timer > 0) lose_timer--;
         ending = win_timer == 0 || lose_timer == 0;
+        perf_steps++;
       }
+      uint32_t t1 = plat_millis();
+      perf_sim_ms += t1 - t0;
       int t = win_timer >= 0 ? win_timer : lose_timer;
       shot_t = t > 0 && t <= SHOT_FRAMES ? t : 0;
       if (ending) {
@@ -192,6 +201,11 @@ int main(int argc, char **argv) {
       if (!norender)
 #endif
         render_frame(hud_post);
+      uint32_t t2 = plat_millis();
+      perf_draw_ms += t2 - t1;
+      perf_frames++;
+      if (t2 - t0 > perf_max) perf_max = t2 - t0;
+      if (t2 - t0 > 33) perf_slow++;
     } else if (state == ST_CARD) {
       int nb = card_buttons();
       bool ok = (hit & (KEY(K_OK) | KEY(K_EXE))) != 0;

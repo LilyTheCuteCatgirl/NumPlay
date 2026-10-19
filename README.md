@@ -185,6 +185,8 @@ Filmed on my own calculator, no emulator.
 - [ ] Level Devil
 - [ ] Sonic the Hedgehog
 - [ ] Subway Surfers
+- [ ] Hill Climb Racing
+- [ ] Super Mario 64
 - [ ] The Nether and the End in NumBlocks
 - [ ] Full Minecraft 1.18.2 as a standalone app
 - [ ] A customizer website: pick the games you want in your launcher, with Enlarged Extra Apps support to fit several big games, or big and small ones together

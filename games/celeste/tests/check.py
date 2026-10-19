@@ -168,6 +168,14 @@ for room, (above, places) in ASCENTS.items():
     check(f"room {above} " in out and " deaths 0 " in out and "state 0 " in out,
           f"7A's {room}: the ascent didn't land in {above}: {out[-160:]}")
 
+# 7B's last climb (g-02): a death goes back to the spawn closest to the last summit checkpoint touched, though each
+# one is listed before its own spawn (the player stood on two in a row, then put on a spinner)
+for (a, b, spinner) in (((896, 1872), (712, 1680), (800, 1760)), ((544, 1504), (1152, 1120), (1088, 1136))):
+    out = run(["--chapter", "20", "--room", "g-02", "--nowipe", "--tp", f"5-30:{a[0]},{a[1]}", "--tp", f"60-90:{b[0]},{b[1]}",
+               "--tp", f"150-152:{spinner[0]},{spinner[1]}"], 400, what="7B's checkpoints")
+    check(f"room g-02 player {12632 + b[0]},{-17504 + b[1]} " in out and " deaths 1 " in out,
+          f"7B's g-02: a death didn't go back to the checkpoint at {b}: {out[-160:]}")
+
 # a chapter's end: its screen, then the chapter select
 out = run(["--chapter", "1", "--room", "1"], 500, "400-401:o", env={"COMPLETE_AT": "60"}, what="a chapter's end")
 

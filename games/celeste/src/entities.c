@@ -1433,11 +1433,8 @@ bool ent_create(const EData *d) {
   if (ents_ch0(d) || ents_ch1(d) || ents_ch2(d) || ents_ch3(d) || ents_ch4(d) || ents_ch5(d) || ents_ch6(d) ||
       ents_ch7(d) || ents_ch8(d) || ents_ch9(d))
     return true;
-  int slot = g_level.room_slot;
   switch (d->type) {
-    case ET_player:
-      if (nspawns[slot] < MAX_SPAWNS) spawns[slot][nspawns[slot]++] = v2(d->x, d->y);
-      return true;
+    case ET_player: return true;   /* a spawn point: entities_load has it */
     case ET_jumpThru: new_jumpthru(d); return true;
     case ET_decalSolid: new_dsolid(d); return true;
     case ET_spikesUp: new_spikes(d, DIR_UP); return true;
@@ -1533,8 +1530,11 @@ void entities_load(Room *rm, const uint8_t *blob, int slot) {
   EData d;
   d.room = rm->index;
   d.rx = (float)rm->x, d.ry = (float)rm->y;
-  for (int pass = 0; pass < 2; pass++) {
-    const uint8_t *p = blob + rd16(blob + 2 * (pass ? RB_TRIGS : RB_ENTS));
+  /* pass 0: the spawn points (LevelData.Spawns), all of them before an entity looks for the closest (a summit
+     checkpoint is often listed before its own: 7B's g-00 and g-02); 1: the entities; 2: the triggers */
+  for (int pass = 0; pass < 3; pass++) {
+    bool trig = pass == 2;
+    const uint8_t *p = blob + rd16(blob + 2 * (trig ? RB_TRIGS : RB_ENTS));
     int n = rd16(p);
     p += 2;
     for (int i = 0; i < n; i++) {
@@ -1544,16 +1544,20 @@ void entities_load(Room *rm, const uint8_t *blob, int slot) {
       d.x = rm->x + (float)rds16(p + 4);
       d.y = rm->y + (float)rds16(p + 6);
       d.attrs = p + 8;
-      int size = pass ? trig_attr_size(d.type) : ent_attr_size(d.type);
+      int size = trig ? trig_attr_size(d.type) : ent_attr_size(d.type);
       d.nodes = d.attrs + size;
-      g_new_eid = (uint16_t)d.id;
-      d.trig = pass;
-      uint32_t id = level_entity_hash(&d);
-      if (!level_do_not_load(id) && !leader_has_id(id)) {   /* what follows the player is there already */
-        if (pass) trig_create(&d);
-        else ent_create(&d);
+      if (!pass) {
+        if (d.type == ET_player && nspawns[slot] < MAX_SPAWNS) spawns[slot][nspawns[slot]++] = v2(d.x, d.y);
+      } else {
+        g_new_eid = (uint16_t)d.id;
+        d.trig = trig;
+        uint32_t id = level_entity_hash(&d);
+        if (!level_do_not_load(id) && !leader_has_id(id)) {   /* what follows the player is there already */
+          if (trig) trig_create(&d);
+          else ent_create(&d);
+        }
+        g_new_eid = 0xFFFF;
       }
-      g_new_eid = 0xFFFF;
       p = d.nodes + 4 * d.nnodes;
       if ((uintptr_t)(p - blob) & 1) p++;
     }

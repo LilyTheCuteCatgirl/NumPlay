@@ -547,6 +547,17 @@ static void eval_node(Env *e, int ni, int out, Val *r) {
       vec3 from = in_vec(e, nd, 0), to = in_vec(e, nd, 1), hit;
       int o = -1;
       bool h = phys_raycast(from, to, &hit, &o);
+      /* like Fancade: the ground (its floor, the plane y = 0) stops rays coming from above too, with no
+         object hit; and a ray that hits nothing gives 0, 0, 0 for its position (fancade.com/wiki/Raycast) */
+      if (from.y > 0 && to.y < 0) {
+        float t = from.y / (from.y - to.y);
+        vec3 g = v3(from.x + (to.x - from.x) * t, 0, from.z + (to.z - from.z) * t);
+        if (!h || vdot(vsub(g, from), vsub(g, from)) < vdot(vsub(hit, from), vsub(hit, from))) {
+          h = true;
+          hit = g;
+          o = -1;
+        }
+      }
 #ifdef HOST
       if (getenv("ND_RDBG") && (vm_frame_count == atoi(getenv("ND_RDBG")) || atoi(getenv("ND_RDBG")) < 0))
       {
@@ -563,7 +574,7 @@ static void eval_node(Env *e, int ni, int out, Val *r) {
             fprintf(stderr, "   f%d cand obj %d flags %x local (%.3f %.3f %.3f)->(%.3f %.3f %.3f) bounds (%.2f %.2f %.2f)-(%.2f %.2f %.2f) np=%d\n", vm_frame_count, q, objs[q].flags, l.x, l.y, l.z, l2.x, l2.y, l2.z,
                     sh->bmin.x, sh->bmin.y, sh->bmin.z, sh->bmax.x, sh->bmax.y, sh->bmax.z, sh->np);
           }
-        if (h) {
+        if (h && o >= 0) {
           vec3 l = obj_local(&objs[o], from), l2 = obj_local(&objs[o], to);
           fprintf(stderr, "   local (%.3f %.3f %.3f)->(%.3f %.3f %.3f) np=%d env anchor=%d\n", l.x, l.y, l.z, l2.x, l2.y, l2.z, objs[o].shape->np, e->anchor);
         }
@@ -574,7 +585,7 @@ static void eval_node(Env *e, int ni, int out, Val *r) {
         r->u.i = h;
       } else if (out == 1) {
         r->t = T_VEC;
-        r->u.v = h ? hit : to;
+        r->u.v = h ? hit : v3(0, 0, 0);
       } else {
         r->t = T_OBJ;
         r->u.i = h ? o : -1;
@@ -695,9 +706,10 @@ static void exec_stmt(Env *e, int ni) {
       Val v;
       eval(e, node_in(nd, 0), &v);
       deref(&v);
-      /* a value wired from an input the outer script left unconnected changes nothing (scripts use
-         "set a default, then set the input" for optional inputs) */
-      if (v.t == 0xff && node_in(nd, 0) != NONE16) return;
+      /* no value (Value not wired, or wired from an input the outer script left unconnected) changes
+         nothing, as in Fancade (fancade.com/wiki/Set_Variable; scripts use "set a default, then set the
+         input" for optional inputs) */
+      if (v.t == 0xff) return;
       if (v.t != vs->type && !(vs->type == T_CON && v.t == T_OBJ)) val_default(&v, vs->type);
       var_write(vs, 0, &v);
       return;
@@ -709,7 +721,7 @@ static void exec_stmt(Env *e, int ni) {
       if (!ptr.isptr) return;
       eval(e, node_in(nd, 1), &v);
       deref(&v);
-      if (v.t == 0xff && node_in(nd, 1) != NONE16) return;
+      if (v.t == 0xff) return; /* no value: nothing changes, as above */
       if (v.t != ptr.u.p.vs->type && !(ptr.u.p.vs->type == T_CON && v.t == T_OBJ)) val_default(&v, ptr.u.p.vs->type);
       var_write(ptr.u.p.vs, ptr.u.p.idx, &v);
       return;
@@ -1000,6 +1012,19 @@ static bool make_env(Prog *p, int parent, int pnode, int bx, int by, int bz) {
     const uint8_t *ob = nd + 10 + 2 * nd[9];
     uint16_t a = rd16(ob);
     e->anchor = a == NONE16 ? -1 : pe->tbase + a;
+    if (e->anchor >= 0) {
+      /* a block split between two objects (a Slider: one voxel group on its rail, one on the part that slides)
+         belongs to the object holding its first group. The pack tool took the group at the block's centre,
+         and Double Trouble's gate then cast its rays from the rail, stopping as soon as it reached them. */
+      int lo = pe->tbase, hi = pp->is_level ? nlevelobj : pe->tbase + pp->ntmpl;
+      for (int i = lo; i < hi && i < nobj; i++) {
+        int pi = shape_find(objs[i].shape, bx, by, bz);
+        if (pi >= 0 && PK_C(objs[i].shape->key[pi]) == 0) {
+          e->anchor = i;
+          break;
+        }
+      }
+    }
     e->selfobj = arena_alloc(2 * (p->nself ? p->nself : 1));
     if (!e->selfobj) return false;
     for (int k = 0; k < p->nself; k++) {
@@ -1064,12 +1089,11 @@ static void run_env(int ei) {
       }
       continue;
     }
-    for (int j = k; j < p->nentries; j++)
-      if (rd16(p->entries + 2 * j) == i) {
-        run_chain(e, (uint16_t)i);
-        if (j == k) k++;
-        break;
-      }
+    /* the entries are in node order (tools/scriptc.py): the next one is this node's or a later one's */
+    if (k < p->nentries && rd16(p->entries + 2 * k) == i) {
+      run_chain(e, (uint16_t)i);
+      k++;
+    }
   }
 }
 

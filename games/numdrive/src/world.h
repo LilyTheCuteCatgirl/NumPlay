@@ -68,6 +68,7 @@ typedef struct {
   vec3 com;        /* rest-space centre of mass (world units) */
   vec3 origin;     /* rest-space reference point (centre of the block nearest the com) */
   vec3 bmin, bmax; /* rest-space bounds (world units) */
+  float reach;     /* sum over the axes of the bounds' furthest extent from origin: no part is further away */
 } Shape;
 
 #define PK_X(k) ((k) >> 20)

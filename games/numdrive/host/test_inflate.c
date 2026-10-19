@@ -9,6 +9,7 @@ int main(void){
   uint8_t *buf = malloc(1<<20); int bad=0;
   for (int i=0;i<n;i++){
     uint32_t o0=*(uint32_t*)(offs+4*i), o1=*(uint32_t*)(offs+4*i+4), rs=*(uint32_t*)(raws+4*i);
+    if (rs & 0x80000000u) { if (o1-o0 < (rs & 0x7FFFFFFFu)) { printf("record %d: stored %u bytes, size says %u\n", i, o1-o0, rs & 0x7FFFFFFFu); bad++; } continue; } /* stored (padded), used in place */
     int r = inflate_raw(pack_data+o0, o1-o0, buf, rs);
     if (r != (int)rs) { printf("record %d: got %d expected %u\n", i, r, rs); bad++; }
   }

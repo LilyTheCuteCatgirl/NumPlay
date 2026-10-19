@@ -134,8 +134,15 @@ void cam_screen_to_world(float sx, float sy, vec3 *near, vec3 *far) {
 #define ZSCALE 512.0f
 
 static inline int iceil(float v) {
+#if defined(__arm__) && defined(__ARM_FP)
+  /* one VCVTP instruction (FPv5); past 2^31 the result is what the old (int)v + (v > (float)(int)v) gave */
+  int i = (int)__builtin_lceilf(v);
+  if (__builtin_expect(i == INT32_MAX, 0) && v > 2147483648.0f) i = INT32_MIN;
+  return i;
+#else
   int i = (int)v;
   return i + (v > (float)i);
+#endif
 }
 
 /* Rasterise the parallelogram P0 + s*U + t*V (s, t in [0,1)) with a planar depth.
@@ -149,20 +156,10 @@ typedef struct {
 static bool fl_on;
 static float fl_k, fl_x, fl_y, fl_z;
 
-static void raster(float X0, float Y0, float ux, float uy, float vx, float vy, const PInv *pi, float z0, float zx,
-                   float zy, uint16_t color) {
-  float ymin = Y0, ymax = Y0;
-  float ya = Y0 + uy, yb = Y0 + vy, yc2 = Y0 + uy + vy;
-  if (ya < ymin) ymin = ya;
-  if (ya > ymax) ymax = ya;
-  if (yb < ymin) ymin = yb;
-  if (yb > ymax) ymax = yb;
-  if (yc2 < ymin) ymin = yc2;
-  if (yc2 > ymax) ymax = yc2;
-  int y0 = iceil(ymin - 0.5f), y1 = iceil(ymax - 0.5f);
-  if (y0 < strip_y0) y0 = strip_y0;
-  if (y1 > strip_y1) y1 = strip_y1;
-  if (y0 >= y1) return;
+/* the rows y0 <= y < y1 of the strip covered by a parallelogram (see raster); `plain`: both pairs of edges
+ * slant and the floor is off (most quads), so those tests drop out of the row loop */
+static inline __attribute__((always_inline)) void raster_rows(int y0, int y1, float X0, float Y0, const PInv *pi,
+                                                              float z0, float zx, float zy, uint16_t color, bool plain) {
   /* depth in fixed point: Z(x,y) = (z0 + zx*(x - X0) + zy*(y - Y0) + ZOFF) * ZSCALE */
   float zbase = (z0 + ZOFF - zx * X0 - zy * Y0) * ZSCALE;
   int32_t dz = (int32_t)(zx * ZSCALE * 256.0f);
@@ -170,7 +167,7 @@ static void raster(float X0, float Y0, float ux, float uy, float vx, float vy, c
   float sr = pi->dsdy * dy, tr = pi->dtdy * dy; /* s, t at (X0, row centre) */
   for (int y = y0; y < y1; y++, sr += pi->dsdy, tr += pi->dtdy) {
     float xl, xr;
-    if (pi->isx != 0) {
+    if (plain || pi->isx != 0) {
       float a = -sr * pi->isx, b = (1 - sr) * pi->isx;
       if (a < b) xl = a, xr = b;
       else xl = b, xr = a;
@@ -178,7 +175,7 @@ static void raster(float X0, float Y0, float ux, float uy, float vx, float vy, c
       if (sr < 0 || sr >= 1) continue;
       xl = -1e9f, xr = 1e9f;
     }
-    if (pi->itx != 0) {
+    if (plain || pi->itx != 0) {
       float a = -tr * pi->itx, b = (1 - tr) * pi->itx;
       if (a > b) {
         float t = a;
@@ -195,7 +192,7 @@ static void raster(float X0, float Y0, float ux, float uy, float vx, float vy, c
     if (x0 < clip_x0) x0 = clip_x0;
     if (x1 > clip_x1) x1 = clip_x1;
     float yc = y + 0.5f;
-    if (fl_on) {
+    if (!plain && fl_on) {
       /* world y along the row: a + b * (pixel centre x) */
       float a = fl_k + fl_y * yc + fl_z * (z0 - zx * X0 + zy * (yc - Y0)), b = fl_x + fl_z * zx, e = -0.01f - a;
       if (b > 1e-7f) {
@@ -238,6 +235,33 @@ static void raster(float X0, float Y0, float ux, float uy, float vx, float vy, c
   }
 }
 
+/* The rows of the strip a parallelogram P0 + s*U + t*V (s, t in [0,1)) covers, from its corners' heights
+ * (U and V's heights uy and vy); false when none. (Not inlined, and without fused multiply-adds: the heights
+ * are rounded as they were when this was part of raster.) */
+__attribute__((noinline, optimize("fp-contract=off"))) static bool quad_rows(float Y0, float uy, float vy, int *py0,
+                                                                            int *py1) {
+  float ymin = Y0, ymax = Y0;
+  float ya = Y0 + uy, yb = Y0 + vy, yc2 = Y0 + uy + vy;
+  if (ya < ymin) ymin = ya;
+  if (ya > ymax) ymax = ya;
+  if (yb < ymin) ymin = yb;
+  if (yb > ymax) ymax = yb;
+  if (yc2 < ymin) ymin = yc2;
+  if (yc2 > ymax) ymax = yc2;
+  int y0 = iceil(ymin - 0.5f), y1 = iceil(ymax - 0.5f);
+  if (y0 < strip_y0) y0 = strip_y0;
+  if (y1 > strip_y1) y1 = strip_y1;
+  *py0 = y0;
+  *py1 = y1;
+  return y0 < y1;
+}
+
+/* Rasterise the rows y0 <= y < y1 (quad_rows) of the parallelogram with corner (X0, Y0) and a planar depth. */
+static void raster(int y0, int y1, float X0, float Y0, const PInv *pi, float z0, float zx, float zy, uint16_t color) {
+  if (pi->isx != 0 && pi->itx != 0 && !fl_on) raster_rows(y0, y1, X0, Y0, pi, z0, zx, zy, color, true);
+  else raster_rows(y0, y1, X0, Y0, pi, z0, zx, zy, color, false);
+}
+
 /* --------------------------------------------------------- object drawing */
 typedef struct {
   float ox, oy, oz;      /* screen x, y, depth of rest origin (0,0,0) */
@@ -249,6 +273,7 @@ typedef struct {
   float zx[6], zy[6];
   float fa[6], fb[6], fc[6], fd[6], fia[6], fic[6]; /* per face: (s,t) per screen unit, for 1 voxel quads */
   uint8_t ident;                                  /* unrotated: shared colour cache */
+  float hx, hy; /* half the width and height of a cell on screen, plus a pixel */
 } ObjXf;
 
 static ObjXf xf;
@@ -267,6 +292,8 @@ static void setup_xf(const Obj *o) {
   xf.ox = cam.cx + vdot(d, cam.right) * cam.scale;
   xf.oy = cam.cy - vdot(d, cam.up) * cam.scale;
   xf.oz = vdot(d, cam.fwd);
+  xf.hx = 0.5f * (fabsf(xf.bx[0]) + fabsf(xf.bx[1]) + fabsf(xf.bx[2])) + 1;
+  xf.hy = 0.5f * (fabsf(xf.by[0]) + fabsf(xf.by[1]) + fabsf(xf.by[2])) + 1;
   {
     vec3 lo = vsub(s->bmin, s->origin), hi = vsub(s->bmax, s->origin);
     vec3 m = v3(fmaxf(-lo.x, hi.x), fmaxf(-lo.y, hi.y), fmaxf(-lo.z, hi.z));
@@ -324,48 +351,48 @@ static uint16_t face_color(int pal, int f) {
   return xf.col[i];
 }
 
-/* project rest-space point given in voxel units */
-static inline void proj(float vx, float vy, float vz, float *sx, float *sy, float *sz) {
-  vx *= 0.125f;
-  vy *= 0.125f;
-  vz *= 0.125f;
-  *sx = xf.ox + xf.bx[0] * vx + xf.bx[1] * vy + xf.bx[2] * vz;
-  *sy = xf.oy + xf.by[0] * vx + xf.by[1] * vy + xf.by[2] * vz;
-  *sz = xf.oz + xf.bz[0] * vx + xf.bz[1] * vy + xf.bz[2] * vz;
-}
-
 static const float inv_n[9] = {0, 1, 0.5f, 1.0f / 3, 0.25f, 0.2f, 1.0f / 6, 1.0f / 7, 0.125f};
 
 static void draw_part(const Shape *s, int pi) {
   uint32_t k = s->key[pi];
   const Block *b = blocks[s->blk[pi]];
   int cx = PK_X(k) * 8, cy = PK_Y(k) * 8, cz = PK_Z(k) * 8, comp = PK_C(k);
-  /* quick strip reject using the cell centre (rows first) */
-  float r = 0.9f * cam.scale;
+  /* quick strip reject using the cell's centre and size on screen (rows first) */
   float vx = (cx + 4) * 0.125f, vy = (cy + 4) * 0.125f, vz = (cz + 4) * 0.125f;
   float sy = xf.oy + xf.by[0] * vx + xf.by[1] * vy + xf.by[2] * vz;
-  if (sy + r < strip_y0 || sy - r > strip_y1) return;
+  if (sy + xf.hy < strip_y0 || sy - xf.hy > strip_y1) return;
   float sx = xf.ox + xf.bx[0] * vx + xf.bx[1] * vy + xf.bx[2] * vz;
-  if (sx + r < clip_x0 || sx - r > clip_x1) return;
+  if (sx + xf.hx < clip_x0 || sx - xf.hx > clip_x1) return;
   uint8_t occ = s->occ ? s->occ[pi] : 0;
   for (int f = 0; f < 6; f++) {
     if (!(xf.vis & (1 << f)) || !b->nq[f]) continue;
     const uint8_t *q = b->fq[f];
     int axis = f >> 1, ua = axis == 0 ? 1 : 0, va = axis == 2 ? 1 : 2;
     int pos = !(f & 1);
-    float eux = xf.bx[ua] * 0.125f, euy = xf.by[ua] * 0.125f, evx = xf.bx[va] * 0.125f, evy = xf.by[va] * 0.125f;
-    for (int i = 0; i < b->nq[f]; i++, q += 3) {
+    float euy = xf.by[ua] * 0.125f, evy = xf.by[va] * 0.125f;
+    int i = 0, n = b->nq[f];
+    /* a face against a full face of the same object: its outer layer is hidden. The quads come in layer
+       order (tools/model.py), so that layer is a run at the end (or the start) of the list. */
+    bool hidden = occ & (1 << f);
+    if (hidden && !pos)
+      while (i < n && (q[0] & 7) == 0) i++, q += 3;
+    for (; i < n; i++, q += 3) {
       uint32_t w = q[0] | q[1] << 8 | (uint32_t)q[2] << 16;
       int layer = w & 7, u = (w >> 3) & 7, v = (w >> 6) & 7, du = ((w >> 9) & 7) + 1, dv = ((w >> 12) & 7) + 1;
+      if (hidden && pos && layer == 7) break;
       int col = (w >> 15) & 63, qc = (w >> 21) & 7;
       if (qc != comp) continue;
-      if ((occ & (1 << f)) && layer == (pos ? 7 : 0)) continue;
       float p[3];
       p[axis] = (float)(layer + pos);
       p[ua] = (float)u;
       p[va] = (float)v;
-      float X, Y, Z;
-      proj(cx + p[0], cy + p[1], cz + p[2], &X, &Y, &Z);
+      /* the rows it covers first: most quads of a part on a strip's edge miss the strip */
+      float vx = (cx + p[0]) * 0.125f, vy = (cy + p[1]) * 0.125f, vz = (cz + p[2]) * 0.125f;
+      float Y = xf.oy + xf.by[0] * vx + xf.by[1] * vy + xf.by[2] * vz;
+      int y0, y1;
+      if (!quad_rows(Y, euy * du, evy * dv, &y0, &y1)) continue;
+      float X = xf.ox + xf.bx[0] * vx + xf.bx[1] * vy + xf.bx[2] * vz;
+      float Z = xf.oz + xf.bz[0] * vx + xf.bz[1] * vy + xf.bz[2] * vz;
       PInv pv;
       float iu = inv_n[du], iv = inv_n[dv];
       pv.dsdx = xf.fa[f] * iu;
@@ -374,7 +401,7 @@ static void draw_part(const Shape *s, int pi) {
       pv.dtdy = xf.fd[f] * iv;
       pv.isx = xf.fia[f] * du;
       pv.itx = xf.fic[f] * dv;
-      raster(X, Y, eux * du, euy * du, evx * dv, evy * dv, &pv, Z, xf.zx[f], xf.zy[f], face_color(col, f));
+      raster(y0, y1, X, Y, &pv, Z, xf.zx[f], xf.zy[f], face_color(col, f));
     }
   }
 }
@@ -390,7 +417,7 @@ static void draw_object(Obj *ob, RObj *o) {
   const Shape *s = ob->shape;
   if (o->pcache == 0xFFFF && pc_used + s->np <= pc_avail && pc_used + s->np < 0xFFFF) {
     uint8_t *pc = pc_base + pc_used;
-    float r = 0.9f * cam.scale;
+    float r = xf.hy;
     for (int i = 0; i < s->np; i++) {
       uint32_t k = s->key[i];
       float vy = PK_Y(k) + 0.5f, vx = PK_X(k) + 0.5f, vz = PK_Z(k) + 0.5f;
@@ -462,30 +489,37 @@ static bool obj_screen_bounds(const Obj *o, int *y0, int *y1, int *x0, int *x1) 
 /* ------------------------------------------------------------------ shadows */
 /* Moving objects (and the props following them, like the tyres) cast Fancade style shadows on the
  * ground below: the box faces lit by the sun are projected along the light onto the plane found by a
- * raycast, and ground pixels at that depth are darkened to their ambient only colour. */
+ * raycast, and ground pixels at that depth are darkened to their ambient only colour. The faces are
+ * projected strip by strip, for the casters whose shadow reaches the strip: none is ever left out (they
+ * used to be kept in a list of at most 512 for the frame, and the faces past it were dropped, so shadows
+ * came and went). */
 #define MAX_CASTERS 32
 #define SHADOW_TOL 40 /* depth units */
 static struct {
   int16_t obj, floor;
+  int16_t y0, y1; /* the screen rows its shadow can reach */
   float ground;
 } casters[MAX_CASTERS];
 static int ncasters;
 static uint8_t smask[SCREEN_W * STRIP_H / 8];
-typedef struct {
-  float X, Y, ux, uy, vx, vy, z;
-  int16_t y0, y1;
-  uint8_t floor; /* on Fancade's floor: also darkens the background */
-} SQuad;
-static SQuad *squads; /* projected shadow faces for this frame (scratch) */
-static int nsquads, squad_cap;
-#ifdef HOST
-#include <stdio.h>
-#include <stdlib.h>
-static int st_sq_max, st_sq_drop, st_sq_cap = 1 << 30;
-static void sq_dump(void) { printf("SQUADS max %d dropped %d mincap %d\n", st_sq_max, st_sq_drop, st_sq_cap); }
-#endif
 static float sh_zx, sh_zy; /* screen depth gradient of a horizontal plane */
 static bool sh_any;
+
+/* the screen rows the shadow of o on the plane y = g can reach: its bounds' corners projected along d */
+static void shadow_rows(const Obj *o, float g, vec3 d, int16_t *y0, int16_t *y1) {
+  const Shape *s = o->shape;
+  float mn = 1e9f, mx = -1e9f;
+  for (int c = 0; c < 8; c++) {
+    vec3 pt = v3(c & 1 ? s->bmax.x : s->bmin.x, c & 2 ? s->bmax.y : s->bmin.y, c & 4 ? s->bmax.z : s->bmin.z);
+    vec3 w = obj_world(o, pt);
+    vec3 q = vsub(vadd(w, vscale(d, (g - w.y) / d.y)), vadd(cam.focus, cam.shake));
+    float sy = cam.cy - vdot(q, cam.up) * cam.scale;
+    if (sy < mn) mn = sy;
+    if (sy > mx) mx = sy;
+  }
+  *y0 = (int16_t)(mn < -1000 ? -1000 : mn > 1000 ? 1000 : mn - 2);
+  *y1 = (int16_t)(mx < -1000 ? -1000 : mx > 1000 ? 1000 : mx + 2);
+}
 
 static void find_casters(void) {
   ncasters = 0;
@@ -525,6 +559,7 @@ static void find_casters(void) {
       casters[ncasters].obj = (int16_t)i;
       casters[ncasters].floor = fl;
       casters[ncasters].ground = hit.y;
+      shadow_rows(o, hit.y, d, &casters[ncasters].y0, &casters[ncasters].y1);
       ncasters++;
     }
 }
@@ -596,94 +631,77 @@ static void raster_mark(float X0, float Y0, float ux, float uy, float vx, float 
   }
 }
 
-/* project a lit face (corner p, edges u, v in world space) onto the plane y = g */
+/* project a lit face (corner p, edges u, v in world space) onto the plane y = g, and mark it in the strip */
 static void shadow_face(vec3 p, vec3 u, vec3 v, float g, vec3 d, bool floor) {
   float k = (g - p.y) / d.y;
-#ifdef HOST
-  if (k >= 0 && nsquads >= squad_cap) st_sq_drop++;
-#endif
-  if (k < 0 || nsquads >= squad_cap) return; /* face below the ground plane */
+  if (k < 0) return; /* face below the ground plane */
   vec3 p0 = vadd(p, vscale(d, k));
   vec3 u0 = vsub(u, vscale(d, u.y / d.y)), v0 = vsub(v, vscale(d, v.y / d.y));
   vec3 q = vsub(p0, vadd(cam.focus, cam.shake));
-  SQuad *sq = &squads[nsquads];
-  sq->X = cam.cx + vdot(q, cam.right) * cam.scale;
-  sq->Y = cam.cy - vdot(q, cam.up) * cam.scale;
-  sq->z = vdot(q, cam.fwd) - 0.01f;
-  sq->ux = vdot(u0, cam.right) * cam.scale;
-  sq->uy = -vdot(u0, cam.up) * cam.scale;
-  sq->vx = vdot(v0, cam.right) * cam.scale;
-  sq->vy = -vdot(v0, cam.up) * cam.scale;
-  float ymin = sq->Y + fminf(0, sq->uy) + fminf(0, sq->vy), ymax = sq->Y + fmaxf(0, sq->uy) + fmaxf(0, sq->vy);
-  if (ymax < 0 || ymin > SCREEN_H) return;
-  sq->y0 = (int16_t)(ymin - 1);
-  sq->y1 = (int16_t)(ymax + 1);
-  sq->floor = floor;
-  nsquads++;
+  float X = cam.cx + vdot(q, cam.right) * cam.scale;
+  float Y = cam.cy - vdot(q, cam.up) * cam.scale;
+  float uy = -vdot(u0, cam.up) * cam.scale, vy = -vdot(v0, cam.up) * cam.scale;
+  float ymin = Y + fminf(0, uy) + fminf(0, vy), ymax = Y + fmaxf(0, uy) + fmaxf(0, vy);
+  if (ymax + 1 < strip_y0 || ymin - 1 >= strip_y1) return;
+  float z = vdot(q, cam.fwd) - 0.01f;
+  float ux = vdot(u0, cam.right) * cam.scale, vx = vdot(v0, cam.right) * cam.scale;
+  raster_mark(X, Y, ux, uy, vx, vy, z, floor);
 }
 
-/* project the shadows of all casters once per frame */
-static void build_shadows(void) {
-#ifdef HOST
-  if (nsquads > st_sq_max) st_sq_max = nsquads;
-#endif
-  nsquads = 0;
-  if (!ncasters) return;
+/* the shadow of caster c in this strip */
+static void shadow_caster(int c) {
   vec3 d = vscale(light_to, -1);
-  for (int c = 0; c < ncasters; c++) {
-    const Obj *o = &objs[casters[c].obj];
-    const Shape *s = o->shape;
-    float g = casters[c].ground;
-    vec3 ax[3] = {qrot(o->rot, v3(1, 0, 0)), qrot(o->rot, v3(0, 1, 0)), qrot(o->rot, v3(0, 0, 1))};
-    bool lit[6];
-    for (int f = 0; f < 6; f++) lit[f] = vdot(ax[f >> 1], light_to) * ((f & 1) ? -1.0f : 1.0f) > 1e-3f;
-    for (int i = 0; i < s->np; i++) {
-      uint32_t k = s->key[i];
-      const Block *b = blocks[s->blk[i]];
-      int comp = PK_C(k);
-      uint8_t occ = s->occ ? s->occ[i] : 0;
-      /* use the collision boxes, or the component bounds when the block has none */
-      int nb = b->nbox;
-      for (int j = 0; j < (nb ? nb : 1); j++) {
-        float lo[3], hi[3];
-        if (nb) {
-          const uint8_t *bx = b->boxes + 3 * j;
-          uint32_t w = bx[0] | bx[1] << 8 | (uint32_t)bx[2] << 16;
-          if ((int)(w & 7) != comp) continue;
-          lo[0] = ((w >> 3) & 7), lo[1] = ((w >> 6) & 7), lo[2] = ((w >> 9) & 7);
-          hi[0] = ((w >> 12) & 7) + 1, hi[1] = ((w >> 15) & 7) + 1, hi[2] = ((w >> 18) & 7) + 1;
-        } else {
-          const uint8_t *bb = b->bb + comp * 6;
-          if (bb[0] > bb[3]) continue;
-          lo[0] = bb[0], lo[1] = bb[1], lo[2] = bb[2];
-          hi[0] = bb[3] + 1, hi[1] = bb[4] + 1, hi[2] = bb[5] + 1;
-        }
-        vec3 rest = v3(PK_X(k) + lo[0] / 8, PK_Y(k) + lo[1] / 8, PK_Z(k) + lo[2] / 8);
-        vec3 p0 = obj_world(o, rest);
-        vec3 e[3] = {vscale(ax[0], (hi[0] - lo[0]) / 8), vscale(ax[1], (hi[1] - lo[1]) / 8),
-                     vscale(ax[2], (hi[2] - lo[2]) / 8)};
-        for (int f = 0; f < 6; f++) {
-          if (!lit[f]) continue;
-          int a = f >> 1, ua = a == 0 ? 1 : 0, va = a == 2 ? 1 : 2;
-          /* a face against a full face of the same object adds nothing to its shadow */
-          if ((occ >> f & 1) && ((f & 1) ? lo[a] == 0 : hi[a] == 8)) continue;
-          vec3 p = (f & 1) ? p0 : vadd(p0, e[a]);
-          shadow_face(p, e[ua], e[va], g, d, casters[c].floor);
-        }
+  const Obj *o = &objs[casters[c].obj];
+  const Shape *s = o->shape;
+  float g = casters[c].ground;
+  vec3 ax[3] = {qrot(o->rot, v3(1, 0, 0)), qrot(o->rot, v3(0, 1, 0)), qrot(o->rot, v3(0, 0, 1))};
+  bool lit[6];
+  for (int f = 0; f < 6; f++) lit[f] = vdot(ax[f >> 1], light_to) * ((f & 1) ? -1.0f : 1.0f) > 1e-3f;
+  for (int i = 0; i < s->np; i++) {
+    uint32_t k = s->key[i];
+    const Block *b = blocks[s->blk[i]];
+    int comp = PK_C(k);
+    uint8_t occ = s->occ ? s->occ[i] : 0;
+    /* use the collision boxes, or the component bounds when the block has none */
+    int nb = b->nbox;
+    for (int j = 0; j < (nb ? nb : 1); j++) {
+      float lo[3], hi[3];
+      if (nb) {
+        const uint8_t *bx = b->boxes + 3 * j;
+        uint32_t w = bx[0] | bx[1] << 8 | (uint32_t)bx[2] << 16;
+        if ((int)(w & 7) != comp) continue;
+        lo[0] = ((w >> 3) & 7), lo[1] = ((w >> 6) & 7), lo[2] = ((w >> 9) & 7);
+        hi[0] = ((w >> 12) & 7) + 1, hi[1] = ((w >> 15) & 7) + 1, hi[2] = ((w >> 18) & 7) + 1;
+      } else {
+        const uint8_t *bb = b->bb + comp * 6;
+        if (bb[0] > bb[3]) continue;
+        lo[0] = bb[0], lo[1] = bb[1], lo[2] = bb[2];
+        hi[0] = bb[3] + 1, hi[1] = bb[4] + 1, hi[2] = bb[5] + 1;
+      }
+      vec3 rest = v3(PK_X(k) + lo[0] / 8, PK_Y(k) + lo[1] / 8, PK_Z(k) + lo[2] / 8);
+      vec3 p0 = obj_world(o, rest);
+      vec3 e[3] = {vscale(ax[0], (hi[0] - lo[0]) / 8), vscale(ax[1], (hi[1] - lo[1]) / 8),
+                   vscale(ax[2], (hi[2] - lo[2]) / 8)};
+      for (int f = 0; f < 6; f++) {
+        if (!lit[f]) continue;
+        int a = f >> 1, ua = a == 0 ? 1 : 0, va = a == 2 ? 1 : 2;
+        /* a face against a full face of the same object adds nothing to its shadow */
+        if ((occ >> f & 1) && ((f & 1) ? lo[a] == 0 : hi[a] == 8)) continue;
+        vec3 p = (f & 1) ? p0 : vadd(p0, e[a]);
+        shadow_face(p, e[ua], e[va], g, d, casters[c].floor);
       }
     }
   }
 }
 
 static void draw_shadows(void) {
-  if (!nsquads) return;
+  bool any = false;
+  for (int c = 0; c < ncasters && !any; c++) any = casters[c].y1 >= strip_y0 && casters[c].y0 < strip_y1;
+  if (!any) return;
   memset(smask, 0, sizeof smask);
   sh_any = false;
-  for (int i = 0; i < nsquads; i++) {
-    const SQuad *q = &squads[i];
-    if (q->y1 < strip_y0 || q->y0 >= strip_y1) continue;
-    raster_mark(q->X, q->Y, q->ux, q->uy, q->vx, q->vy, q->z, q->floor);
-  }
+  for (int c = 0; c < ncasters; c++)
+    if (casters[c].y1 >= strip_y0 && casters[c].y0 < strip_y1) shadow_caster(c);
   if (!sh_any) return;
   int n = (strip_y1 - strip_y0) * SCREEN_W;
   for (int i = 0; i < n; i += 8) {
@@ -699,21 +717,7 @@ static void draw_shadows(void) {
 }
 
 void render_prepare(int rx0, int rx1) {
-  uint32_t avail;
-  uint8_t *scr = arena_top(&avail);
-  squads = (SQuad *)scr;
-  squad_cap = (int)((avail / 3) / sizeof(SQuad)); /* at most a third of the free space */
-  if (squad_cap > 512) squad_cap = 512;
-#ifdef HOST
-  {
-    static int reg;
-    if (!reg++ && getenv("ND_STATS")) atexit(sq_dump);
-    if (squad_cap < st_sq_cap) st_sq_cap = squad_cap;
-  }
-#endif
-  uint32_t used = (uint32_t)squad_cap * sizeof(SQuad);
-  pc_base = scr + used;
-  pc_avail = avail - used;
+  pc_base = arena_top(&pc_avail);
   pc_used = 0;
   for (int i = 0; i < nobj; i++) {
     Obj *o = &objs[i];
@@ -729,7 +733,6 @@ void render_prepare(int rx0, int rx1) {
     r->ymax = (int16_t)(y1 > 32000 ? 32000 : y1);
   }
   find_casters();
-  build_shadows();
 }
 
 uint16_t *render_buffer(void) { return cbuf; }
