@@ -26,6 +26,8 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.dirname(HERE)
 sys.path.insert(0, HERE)
 import blocks  # noqa: E402
+sys.path.insert(0, os.path.join(ROOT, '..', '..', 'tools'))
+from share import share  # noqa: E402
 
 TEX = 'assets/minecraft/textures/'
 
@@ -557,17 +559,21 @@ def main():
     bg = first_frame(jar.image('gui/options_background'))
     bg.putdata([(r * 0x40 // 255, g * 0x40 // 255, b * 0x40 // 255, 255) for r, g, b, a in pixels(bg)])
     sprites.append(('dirt_bg', bg))
-    data, offs, pals, dims, flags2 = [], [], [], [], []
+    spans, pals, dims, flags2 = [], [], [], []
     for n, im in sprites:
         bs, pal, alpha = pack_sprite(im)
-        offs.append(len(data))
-        data += bs
+        spans.append(bs)
         pals.append(pal)
         dims.append(im.size)
         flags2.append(1 if alpha else 0)
+    # the furnace's flame, full, is drawn from the row above its own (Minecraft's
+    # drawTexturedModalRect(..., 12 - k, 14, k + 1) with k = 13): the sprite before it stays there
+    flame = [n for n, im in sprites].index('flame')
+    data, offs = share(spans, glue=[(flame - 1, flame)])
+    assert len(data) < 1 << 16
     out.append(f'const uint8_t spr_px[{len(data)}] = {{' + ','.join(str(v) for v in data) + '};')
     spr_bytes = len(data)
-    out.append(f'const uint32_t spr_off[{len(sprites)}] = {{' + ','.join(str(v) for v in offs) + '};')
+    out.append(f'const uint16_t spr_off[{len(sprites)}] = {{' + ','.join(str(v) for v in offs) + '};')
     out.append(f'const uint8_t spr_w[{len(sprites)}] = {{' + ','.join(str(w) for w, h in dims) + '};')
     out.append(f'const uint8_t spr_h[{len(sprites)}] = {{' + ','.join(str(h) for w, h in dims) + '};')
     out.append(f'const uint8_t spr_alpha[{len(sprites)}] = {{' + ','.join(str(v) for v in flags2) + '};')
@@ -670,22 +676,23 @@ def main():
     fb, fw = font_bits(jar)
     out.append('const uint8_t font_bits[96 * 8] = {' + ','.join(str(v) for v in fb) + '};')
     out.append('const uint8_t font_w[96] = {' + ','.join(str(v) for v in fw) + '};')
-    # GUI pictures as runs
+    # GUI pictures as runs, a row the same as one before kept once (their slots and edges repeat)
     gi = gui_images(jar)
-    allrle, offs, pals, sizes, rowoffs = [], [], [], [], []
+    allrle, pals, sizes, rowtab, rowstart, seen = [], [], [], [], [], {}
     for n, im in gi:
         data, rows, pal = rle_image(im)
-        offs.append(len(allrle))
-        rowoffs.append(len(allrle))
-        allrle += data
+        rowstart.append(len(rowtab))
+        for r, r0 in enumerate(rows):
+            run = tuple(data[r0:rows[r + 1] if r + 1 < len(rows) else len(data)])
+            if run not in seen:
+                seen[run] = len(allrle)
+                allrle += run
+            rowtab.append(seen[run])
         pals.append(pal)
         sizes.append((im.size, rows))
+    assert len(allrle) < 1 << 16
     out.append(f'const uint8_t img_rle[{len(allrle)}] = {{' + ','.join(str(v) for v in allrle) + '};')
-    rowtab, rowstart = [], []
-    for (wh, rows), base in zip(sizes, offs):
-        rowstart.append(len(rowtab))
-        rowtab += [base + r for r in rows]
-    out.append(f'const uint32_t img_rows[{len(rowtab)}] = {{' + ','.join(str(v) for v in rowtab) + '};')
+    out.append(f'const uint16_t img_rows[{len(rowtab)}] = {{' + ','.join(str(v) for v in rowtab) + '};')
     out.append(f'const uint16_t img_row0[{len(gi)}] = {{' + ','.join(str(v) for v in rowstart) + '};')
     out.append(f'const uint8_t img_w[{len(gi)}] = {{' + ','.join(str(wh[0]) for wh, r in sizes) + '};')
     out.append(f'const uint8_t img_h[{len(gi)}] = {{' + ','.join(str(wh[1]) for wh, r in sizes) + '};')
@@ -758,7 +765,7 @@ def main():
          f'#define BF_OPAQUE {BF_OPAQUE}', f'#define BF_SOLID {BF_SOLID}', '#define BF_TINT 7', '']
     for i, n in enumerate(names):
         h.append(f'#define TX_{n.upper().replace("@", "")} {i}')
-    h += ['', 'extern const uint8_t spr_px[], spr_w[], spr_h[], spr_alpha[];', 'extern const uint32_t spr_off[];',
+    h += ['', 'extern const uint8_t spr_px[], spr_w[], spr_h[], spr_alpha[];', 'extern const uint16_t spr_off[];',
           'extern const uint16_t spr_pal[][16];', 'extern const uint16_t blk_icon[B_COUNT];   /* sprite of its icon */']
     for i, sp in enumerate(SPRITES):
         h.append(f'#define SP_{sp[0].upper()} {i}')
@@ -785,7 +792,7 @@ def main():
     h += ['extern const uint16_t tab_items[], tab_start[13];   /* the creative tabs\' items */',
           'extern const char *const tab_name[12];']
     h += ['extern const uint8_t font_bits[96 * 8], font_w[96];   /* characters 32-127 */',
-          'extern const uint8_t img_rle[], img_w[], img_h[];', 'extern const uint32_t img_rows[];',
+          'extern const uint8_t img_rle[], img_w[], img_h[];', 'extern const uint16_t img_rows[];',
           'extern const uint16_t img_row0[], img_pal[][16];']
     for i, n in enumerate(gui_names):
         h.append(f'#define IMG_{n.upper()} {i}')

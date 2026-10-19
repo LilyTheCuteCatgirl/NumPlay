@@ -246,7 +246,7 @@ extern const uint8_t rain_run[][4], snow_run[][4], rain_idx[257], snow_idx[257];
 #define TX_FIRE_LAYER_0 216
 
 extern const uint8_t spr_px[], spr_w[], spr_h[], spr_alpha[];
-extern const uint32_t spr_off[];
+extern const uint16_t spr_off[];
 extern const uint16_t spr_pal[][16];
 extern const uint16_t blk_icon[B_COUNT];   /* sprite of its icon */
 #define SP_HOTBAR 0
@@ -325,7 +325,7 @@ extern const uint16_t tab_items[], tab_start[13];   /* the creative tabs' items 
 extern const char *const tab_name[12];
 extern const uint8_t font_bits[96 * 8], font_w[96];   /* characters 32-127 */
 extern const uint8_t img_rle[], img_w[], img_h[];
-extern const uint32_t img_rows[];
+extern const uint16_t img_rows[];
 extern const uint16_t img_row0[], img_pal[][16];
 #define IMG_INVENTORY 0
 #define IMG_CRAFTING_TABLE 1

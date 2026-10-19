@@ -1,0 +1,15 @@
+# Chrome Dino in Chinese: the English text as in the source, a tab, the translation (see tools/lang.py).
+Paused	暂停
+Resume	继续
+Restart	重新开始
+Quit game	退出游戏
+Quit game?	退出游戏？
+Yes	是
+No	否
+Up/Down: choose   OK: confirm   Back: resume	上/下：选择   OK：确定   返回：继续
+Left/Right: choose   OK: confirm	左/右：选择   OK：确定
+OK: play again   Back: quit	OK：再来一局   返回：退出
+OK: start   Back: quit	OK：开始   返回：退出
+OK or Up: jump   Down: duck   Back: pause	OK或上：跳   下：蹲下   返回：暂停
+Chrome's dinosaur game, not affiliated with Google	Chrome 的小恐龙游戏，与 Google 无关
+Made by LilyTheCatgirl and Mason Chen for NumPlay	由 LilyTheCatgirl 和 Mason Chen 为 NumPlay 制作

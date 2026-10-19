@@ -20,8 +20,7 @@
     "repo": "https://github.com/Mason363/NumDash",
     "reset": [
       "numdash.nds"
-    ],
-    "colors": 4
+    ]
   },
   {
     "id": "crossyroad",
@@ -37,8 +36,7 @@
     "shots": [
       "screenshots/title.png"
     ],
-    "repo": "https://github.com/Mason363/CrossyWorks",
-    "colors": 4
+    "repo": "https://github.com/Mason363/CrossyWorks"
   },
   {
     "id": "numblocks",
@@ -93,8 +91,7 @@
       "docs/shot.png"
     ],
     "app": "NumBlocks.nwa",
-    "repo": "https://github.com/Mason363/NumPlay/tree/main/games/numblocks",
-    "colors": 4
+    "repo": "https://github.com/Mason363/NumPlay/tree/main/games/numblocks"
   },
   {
     "id": "numdrive",
@@ -126,8 +123,7 @@
     "shots": [
       "docs/shot.png"
     ],
-    "repo": "https://github.com/Mason363/NumPlay/tree/main/games/balatro",
-    "colors": 4
+    "repo": "https://github.com/Mason363/NumPlay/tree/main/games/balatro"
   },
   {
     "id": "buckshot",
@@ -143,8 +139,7 @@
     "shots": [
       "docs/shot.png"
     ],
-    "repo": "https://github.com/Mason363/NumPlay/tree/main/games/buckshot",
-    "colors": 4
+    "repo": "https://github.com/Mason363/NumPlay/tree/main/games/buckshot"
   },
   {
     "id": "blockblast",
@@ -201,7 +196,7 @@
     "id": "dinorun",
     "title": "Chrome Dino",
     "tagline": "Jump, duck, survive",
-    "credit": "Google Chrome Dino - LilyTheCatgirl",
+    "credit": "Based on Chrome's dinosaur game by Google",
     "top": "0xE5E5E5",
     "bottom": "0x555555",
     "accent": "0x71A050",
@@ -212,7 +207,7 @@
       "docs/shot.png"
     ],
     "app": "ChromeDino.nwa",
-    "repo": "https://github.com/LilyTheCuteCatgirl/lilys-small-numworks-games/blob/main/games/chrome_dino.py"
+    "repo": "https://github.com/Mason363/NumPlay/tree/main/games/dinorun"
   },
   {
     "id": "chess",

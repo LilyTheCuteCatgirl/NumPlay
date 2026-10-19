@@ -1,69 +1,35 @@
 # Chrome Dino
 
-**Google Chrome Dino for NumWorks**, adapted in C by **LilyTheCatgirl** and integrated into [NumPlay](https://github.com/Mason363/NumPlay).
+Chrome's dinosaur game, the one you get when you're offline, on the NumWorks calculator. It plays and looks the way Chrome plays it on a screen as wide as the calculator's.
 
-An unofficial adaptation of the classic dinosaur runner, featuring pixel-art graphics, smooth scrolling, increasingly challenging obstacles, and high-score saving.
+<img src="docs/shot.png" width="320" alt="Chrome Dino: the T-rex jumps over a low pterodactyl">
 
-![Chrome Dino gameplay](docs/shot.png)
+- **Chrome's own game**: its rules, numbers and pictures come from Chrome's source, run at Chrome's 60 frames a second.
+- **Jump the cacti**, small and large, alone or in groups of up to three. Hold the jump key for a higher jump, or let go early for a short one.
+- **Pterodactyls** from a fast enough speed on, at three heights: jump the low ones, duck under the ones flying at head height, and let the high ones fly over you.
+- **Faster and faster**, up to Chrome's top speed. The score flashes at every 100 points.
+- **Night** falls every 700 points: the screen fades to dark, with the moon in its phases and the stars, then day comes back.
+- **Game over** with Chrome's crash, its GAME OVER and its restart button. Your best score is saved and shown as HI.
 
-## Gameplay
-
-Jump over cacti, duck under flying birds, and survive for as long as possible!
-
-Features:
-
-- Classic dinosaur running, jumping, and ducking animations
-- Single and grouped cacti
-- Flying birds with animated wings
-- Increasing obstacle speed and difficulty
-- Safe spacing between birds and cacti to prevent impossible obstacle combinations
-- Scrolling clouds and ground details
-- Day and night cycles
-- Persistent high scores
-
-The game uses a 50 ms physics update interval, with a jump lasting approximately 0.7 seconds and reaching a height of 49 pixels. Birds and cacti move left at the same speed, starting at approximately 180 pixels per second.
-
-Rendering targets approximately 30 FPS using partial-screen updates to improve performance on the calculator. Actual frame rates depend on the hardware.
+<img src="docs/start.png" width="240" alt="The T-rex waiting to start, with the keys under it"> <img src="docs/night.png" width="240" alt="Chrome Dino at night, under a crescent moon"> <img src="docs/gameover.png" width="240" alt="GAME OVER, with the high score">
 
 ## Controls
 
 | Key | Action |
-|---|---|
-| **OK** | Start, jump, or restart |
-| **Down** / **2** | Duck; fall faster while airborne |
-| **Clear / Backspace** | Pause or resume |
-| **Back / Undo** | Exit the game |
-| **Home** | Exit the game |
-| **Shift** (title screen) | Show controls |
-
-Holding OK can automatically trigger another jump after landing.
-
-## Building
-
-Chrome Dino is integrated into NumPlay and is also available as a standalone NumWorks application.
-
-To build the standalone application from the repository root, using the NumPlay ARM toolchain and `nwlink`:
-
-`make -C games/dinorun build`
-
-The resulting file is:
-
-`games/dinorun/output/dinorun.nwa`
-
-To check the installable build:
-
-`make -C games/dinorun check`
-
-To run the host gameplay tests:
-
-`make -C games/dinorun host-test`
-
-The host tests cover movement, collision detection, jumping, bird direction, obstacle spacing, rendering, and controls.
-
-The game is already registered in `games/games.json` and is included automatically when building the full NumPlay launcher.
+| --- | --- |
+| OK or Up (or 8) | Start, jump (hold it to jump higher) |
+| Down (or 2) | Duck; in the air, come down faster |
+| OK, after a crash | Play again |
+| EXE, after a crash | Play again at once |
+| Back | Pause: Resume, Restart, Quit game |
+| Home | Quit |
 
 ## Credits
 
-- **Original Chrome Dino game:** Google
-- **NumWorks C adaptation and NumPlay integration:** LilyTheCatgirl
-- **Python sprite reference:** [Chrome Dino in Lily's Small NumWorks Games](https://github.com/LilyTheCuteCatgirl/lilys-small-numworks-games/blob/main/games/chrome_dino.py)
+Chrome's dinosaur game is **Google**'s (2014). This version ports it from [Chromium's source](https://chromium.googlesource.com/chromium/src/+/main/components/neterror/resources/dino_game/), its code and its pictures, under Chromium's BSD license (see [LICENSE](LICENSE)). Not affiliated with Google. Chrome is a trademark of Google LLC.
+
+**[LilyTheCatgirl](https://github.com/LilyTheCuteCatgirl)** brought the game to NumPlay, after her version for the calculator's Python in [Lily's Small NumWorks Games](https://github.com/LilyTheCuteCatgirl/lilys-small-numworks-games). Mason Chen made it follow Chrome's own code.
+
+It comes inside [NumPlay](https://github.com/Mason363/NumPlay), or on its own as `ChromeDino.nwa` from the [latest release](https://github.com/Mason363/NumPlay/releases/latest).
+
+Build: `make` (needs `arm-none-eabi-gcc` and Node.js for nwlink). Tests: `make host-test`. The pictures: `make sprites SHEET=100-offline-sprite.png`, from Chromium's sprite sheet (see `tools/sprites.py`).

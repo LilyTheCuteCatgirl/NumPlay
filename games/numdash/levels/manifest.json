@@ -7,7 +7,7 @@
       "sha256": "e42799a8d482d3a99d6f91f715de89258c2f95d4ea863151fe617bdb7c661ed3",
       "objects": 2272,
       "events": 19,
-      "compressed_bytes": 2474,
+      "compressed_bytes": 2307,
       "skipped_ids": {}
     },
     {
@@ -17,7 +17,7 @@
       "sha256": "6e77d5d126da52f8010cc775030e2376c685bd2dd930f7bc7f7eddc13da85f75",
       "objects": 1530,
       "events": 15,
-      "compressed_bytes": 1589,
+      "compressed_bytes": 1468,
       "skipped_ids": {}
     },
     {
@@ -27,7 +27,7 @@
       "sha256": "bb75d5f0ab577c7586c1143202f54dd39ba9237ed49a20cab3132092161b8e02",
       "objects": 1509,
       "events": 22,
-      "compressed_bytes": 2107,
+      "compressed_bytes": 1938,
       "skipped_ids": {}
     },
     {
@@ -37,7 +37,7 @@
       "sha256": "29349b1d9a72cf832a7236674e0360834203c35a16d90ebe2152bbbe72b3b0e3",
       "objects": 1402,
       "events": 42,
-      "compressed_bytes": 1965,
+      "compressed_bytes": 1837,
       "skipped_ids": {}
     },
     {
@@ -47,7 +47,7 @@
       "sha256": "f43634e6b4f5e0d02ff903f7890e478a1b61ba714b960d684aed0e85fa3ae94f",
       "objects": 2126,
       "events": 20,
-      "compressed_bytes": 2478,
+      "compressed_bytes": 2273,
       "skipped_ids": {}
     },
     {
@@ -57,7 +57,7 @@
       "sha256": "0e081466ff06567cf8eddbcb2a0b6580867838be30bcff74954d7f1bc9b0aa4d",
       "objects": 1691,
       "events": 13,
-      "compressed_bytes": 2152,
+      "compressed_bytes": 2006,
       "skipped_ids": {}
     },
     {
@@ -67,7 +67,7 @@
       "sha256": "20918d084e122190dff545fc20a2a91037bd82e0dce5db002486fdf6563c862a",
       "objects": 2767,
       "events": 46,
-      "compressed_bytes": 2792,
+      "compressed_bytes": 2622,
       "skipped_ids": {}
     },
     {
@@ -77,7 +77,7 @@
       "sha256": "9892fedc491a190403b109f6561edcc8085f0ad802773cab076ac70eea9fb369",
       "objects": 3563,
       "events": 30,
-      "compressed_bytes": 4988,
+      "compressed_bytes": 4610,
       "skipped_ids": {
         "45": 3,
         "46": 3
@@ -90,7 +90,7 @@
       "sha256": "7da96eba59a34ca99d20081838c35468bf29312051fbe8bd178c62ff1edbd9e5",
       "objects": 3852,
       "events": 66,
-      "compressed_bytes": 4641,
+      "compressed_bytes": 4302,
       "skipped_ids": {
         "45": 2,
         "46": 1
@@ -103,7 +103,7 @@
       "sha256": "e5e8ef91c0fb788bb0352ff759c85115e01f849257e36b85de028761772a8953",
       "objects": 7506,
       "events": 0,
-      "compressed_bytes": 13338,
+      "compressed_bytes": 12899,
       "skipped_ids": {}
     },
     {
@@ -113,7 +113,7 @@
       "sha256": "9f3b0893b3aef222b9031920a3f938817655978619da74099debb60fe8742cf2",
       "objects": 19006,
       "events": 0,
-      "compressed_bytes": 43969,
+      "compressed_bytes": 42338,
       "skipped_ids": {
         "115": 3,
         "914": 16
@@ -126,7 +126,7 @@
       "sha256": "b6303210b41ed372c2234648c1482be8df501b5e98460805f2c4a46305d497f3",
       "objects": 16771,
       "events": 0,
-      "compressed_bytes": 53732,
+      "compressed_bytes": 51903,
       "skipped_ids": {
         "31": 10,
         "914": 4,

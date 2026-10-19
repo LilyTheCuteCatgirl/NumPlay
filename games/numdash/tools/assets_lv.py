@@ -47,9 +47,10 @@ def main():
     sprites = lv_sprites()
     if len(sys.argv) > 1:
         preview(sprites, sys.argv[1])
-    pk = Packer(dedupe=True)
+    pk = Packer()
     for name, art, fmt in sprites:
         pk.add(name, art.image(), art.ax, art.ay, fmt)
+    pk.layout()
     names = [s[0] for s in pk.sprites]
     assert len(set(names)) == len(names), 'duplicate sprite names'
     clash = set(c_ident(n) for n in names) & first_names()

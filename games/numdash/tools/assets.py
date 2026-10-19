@@ -11,6 +11,9 @@ import numpy as np
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(Path(__file__).resolve().parent))
+sys.path.insert(0, str(ROOT.parents[1] / 'tools'))
+
+from share import share                        # noqa: E402
 
 from sprites_game import game_sprites          # noqa: E402
 from sprites_ui import ui_sprites              # noqa: E402
@@ -86,16 +89,15 @@ def palette_quantize(img, n=15, iters=12):
 
 
 class Packer:
-    def __init__(self, dedupe=False):
+    def __init__(self):
         self.blob = bytearray()
         self.sprites = []      # (name, w, h, ax, ay, fmt, pal, off)
         self.palettes = []
-        self.seen = {} if dedupe else None   # pixel data -> offset: recoloured copies share it
+        self.data = []         # each sprite's pixels
 
     def add(self, name, img, ax, ay, fmt):
         img, ax, ay = trim(img, ax, ay)
         h, w = img.shape[:2]
-        off = len(self.blob)
         pal_i = 0
         if fmt == 'A4':
             data = pack_nibbles(quant4(img[..., 3]))
@@ -109,15 +111,16 @@ class Packer:
             data = pack_nibbles(idx)
             pal_i = len(self.palettes)
             self.palettes.append(pal)
-        key = (fmt, w, h, bytes(data))
-        if self.seen is not None and key in self.seen:
-            off = self.seen[key]
-        else:
-            if self.seen is not None:
-                self.seen[key] = off
-            self.blob += data
-        self.sprites.append((name, w, h, ax, ay, FMT[fmt], pal_i, off))
+        self.data.append(bytes(data))
+        self.sprites.append((name, w, h, ax, ay, FMT[fmt], pal_i, 0))
         return len(self.sprites) - 1
+
+    def layout(self):
+        """The blob, sprites sharing what they can (recoloured copies, runs of
+        see-through rows): every reader stays inside its sprite's rows."""
+        blob, offs = share(self.data)
+        self.blob = bytearray(blob)
+        self.sprites = [s[:7] + (o,) for s, o in zip(self.sprites, offs)]
 
 
 def c_ident(name):
@@ -129,6 +132,7 @@ def main():
     for name, art, fmt in game_sprites() + ui_sprites():
         pk.add(name, art.image(), art.ax, art.ay, fmt)
     fonts = build_fonts(pk)
+    pk.layout()
     names = [s[0] for s in pk.sprites]
     assert len(set(names)) == len(names), 'duplicate sprite names'
 

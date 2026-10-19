@@ -1,0 +1,15 @@
+# Chrome Dino in French: the English text as in the source, a tab, the translation (see tools/lang.py).
+Paused	Pause
+Resume	Reprendre
+Restart	Recommencer
+Quit game	Quitter
+Quit game?	Quitter ?
+Yes	Oui
+No	Non
+Up/Down: choose   OK: confirm   Back: resume	Haut/Bas : choisir  OK : valider  Retour : reprendre
+Left/Right: choose   OK: confirm	Gauche/Droite : choisir   OK : valider
+OK: play again   Back: quit	OK : rejouer   Retour : quitter
+OK: start   Back: quit	OK : commencer   Retour : quitter
+OK or Up: jump   Down: duck   Back: pause	OK ou Haut : sauter  Bas : se baisser  Retour : pause
+Chrome's dinosaur game, not affiliated with Google	Le jeu du dinosaure de Chrome, sans lien avec Google
+Made by LilyTheCatgirl and Mason Chen for NumPlay	Fait par LilyTheCatgirl et Mason Chen pour NumPlay
