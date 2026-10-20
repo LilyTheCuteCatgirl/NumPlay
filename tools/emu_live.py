@@ -53,7 +53,7 @@ import tkinter as tk
 from tkinter import filedialog, messagebox, ttk
 
 import numpy as np
-from PIL import Image, ImageTk, ImageDraw, ImageFont, ImageEnhance
+from PIL import Image, ImageTk, ImageDraw, ImageFont
 
 try:
     from tkinterdnd2 import DND_FILES, TkinterDnD
@@ -94,10 +94,8 @@ LCD_MS_PER_PIXEL = (85.0 / (24 * 320 * 152) + 45.0 / (120 * 320 * 16)) / 2
 # replacement for a firmware-specific glyph rasterizer cycle model.
 FONT_CALL_MS = 0.030
 FONT_CHAR_MS = (44.0 / 120.0 - FONT_CALL_MS) / 18
-# NUMPLAY_DARK_MODE_V1
-# Keep both palettes here so the theme can be changed while a game runs.
-# The calculator LCD image and calculator artwork are deliberately untouched.
-THEME_SETTINGS_FILE = Path.home() / ".numplay-emulator" / "settings.json"
+# The interface uses Epsilon's yellow and greys; the LCD artwork keeps its own colours.
+SETTINGS_FILE = Path.home() / ".numplay-emulator" / "settings.json"
 THEME_PALETTES = {
     "light": {
         "BG": "#f5f5f5", "PANEL": "#ffffff", "PANEL_2": "#ececec",
@@ -106,35 +104,33 @@ THEME_PALETTES = {
         "ERROR_BG": "#fde3e3",
     },
     "dark": {
-        "BG": "#131821", "PANEL": "#1c232f", "PANEL_2": "#2b3544",
-        "HOVER": "#394759", "LINE": "#394759", "FG": "#edf1f9",
-        "MUTED": "#aab8cd", "ACCENT": "#ffb734", "SELECT": "#3c4b60",
-        "ERROR_BG": "#4c303a",
+        "BG": "#242427", "PANEL": "#2d2d31", "PANEL_2": "#38383b",
+        "HOVER": "#414147", "LINE": "#414147", "FG": "#f2f2f2",
+        "MUTED": "#b4b4b6", "ACCENT": "#ffb734", "SELECT": "#414147",
+        "ERROR_BG": "#4c3232",
     },
 }
 
 
-def _load_theme_preference():
+def _read_settings():
     try:
-        data = json.loads(THEME_SETTINGS_FILE.read_text(encoding="utf-8"))
-        return data.get("theme") if isinstance(data, dict) and data.get("theme") in THEME_PALETTES else "light"
+        data = json.loads(SETTINGS_FILE.read_text(encoding="utf-8"))
     except (OSError, ValueError, TypeError):
-        return "light"
+        return {}
+    return data if isinstance(data, dict) else {}
 
 
-def _save_theme_preference(name):
-    """Preserve other settings and atomically save the chosen theme."""
+def _save_setting(key, value):
+    """Atomically update one preference without overwriting the others."""
+    data = _read_settings()
+    data[key] = value
+    SETTINGS_FILE.parent.mkdir(parents=True, exist_ok=True)
+    temporary = SETTINGS_FILE.with_suffix(".tmp")
     try:
-        data = json.loads(THEME_SETTINGS_FILE.read_text(encoding="utf-8"))
-        if not isinstance(data, dict):
-            data = {}
-    except (OSError, ValueError, TypeError):
-        data = {}
-    data["theme"] = name
-    THEME_SETTINGS_FILE.parent.mkdir(parents=True, exist_ok=True)
-    tmp = THEME_SETTINGS_FILE.with_suffix(".tmp")
-    tmp.write_text(json.dumps(data, indent=2) + "\n", encoding="utf-8")
-    os.replace(tmp, THEME_SETTINGS_FILE)
+        temporary.write_text(json.dumps(data, indent=2) + "\n", encoding="utf-8")
+        os.replace(temporary, SETTINGS_FILE)
+    finally:
+        temporary.unlink(missing_ok=True)
 
 
 def _activate_theme_palette(name):
@@ -143,7 +139,7 @@ def _activate_theme_palette(name):
     globals().update(THEME_PALETTES[CURRENT_THEME])
 
 
-_activate_theme_palette(_load_theme_preference())
+_activate_theme_palette(_read_settings().get("theme", "light"))
 UI_FAMILY = ("Helvetica Neue" if sys.platform == "darwin" else "Segoe UI" if os.name == "nt" else "DejaVu Sans")
 MONO_FAMILY = ("Menlo" if sys.platform == "darwin" else "Consolas" if os.name == "nt" else "DejaVu Sans Mono")
 FONT_GROW = 3 if sys.platform == "darwin" else 0   # (Tk's points are smaller on a Mac)
@@ -1594,128 +1590,30 @@ def builtin_artwork() -> Path:
     return BUILTIN_SKIN
 
 
-# NUMPLAY_WINDOW_MEMORY_V1
-WINDOW_SETTINGS_FILE = Path.home() / ".numplay-emulator" / "settings.json"
-
-
-def _window_settings_read():
-    """Use the same JSON as Dark mode; tolerate an absent or damaged file."""
-    try:
-        settings = json.loads(WINDOW_SETTINGS_FILE.read_text(encoding="utf-8"))
-        return settings if isinstance(settings, dict) else {}
-    except (OSError, ValueError, TypeError):
-        return {}
-
-
-def _window_settings_save(placement):
-    """Preserve unrelated preferences (especially the theme)."""
-    settings = _window_settings_read()
-    settings["window"] = dict(placement)
-    WINDOW_SETTINGS_FILE.parent.mkdir(parents=True, exist_ok=True)
-    tmp = WINDOW_SETTINGS_FILE.with_suffix(".window-tmp")
-    try:
-        tmp.write_text(json.dumps(settings, indent=2) + "\n", encoding="utf-8")
-        os.replace(tmp, WINDOW_SETTINGS_FILE)
-    finally:
-        try:
-            tmp.unlink(missing_ok=True)
-        except OSError:
-            pass
-
-
-def _window_workareas(root):
-    """Visible desktop work areas. Windows includes secondary monitors on the left."""
-    if os.name == "nt":
-        try:
-            import ctypes
-            from ctypes import wintypes
-
-            class RECT(ctypes.Structure):
-                _fields_ = [(name, ctypes.c_long) for name in ("left", "top", "right", "bottom")]
-
-            class MONITORINFO(ctypes.Structure):
-                _fields_ = [("cbSize", wintypes.DWORD), ("rcMonitor", RECT),
-                            ("rcWork", RECT), ("dwFlags", wintypes.DWORD)]
-
-            callback_type = ctypes.WINFUNCTYPE(wintypes.BOOL, wintypes.HMONITOR,
-                                                wintypes.HDC, ctypes.POINTER(RECT),
-                                                wintypes.LPARAM)
-            areas = []
-
-            def each_monitor(handle, _hdc, _rect, _data):
-                info = MONITORINFO()
-                info.cbSize = ctypes.sizeof(MONITORINFO)
-                if ctypes.windll.user32.GetMonitorInfoW(handle, ctypes.byref(info)):
-                    rc = info.rcWork
-                    areas.append((int(rc.left), int(rc.top), int(rc.right), int(rc.bottom)))
-                return True
-
-            ctypes.windll.user32.EnumDisplayMonitors(None, None, callback_type(each_monitor), 0)
-            if areas:
-                return areas
-        except (AttributeError, OSError, ValueError):
-            pass
-    return [(0, 0, max(1, root.winfo_screenwidth()),
-             max(1, root.winfo_screenheight()))]
-
-
-def _window_safe_geometry(placement, workareas):
-    """Keep a saved window reachable after a monitor is disconnected."""
+def _safe_window_geometry(placement, root):
+    """Ignore invalid/off-screen saved placements after a display change."""
     if not isinstance(placement, dict):
         return None
-    values = {}
-    for key in ("width", "height", "x", "y"):
-        value = placement.get(key)
-        if type(value) is not int or abs(value) > 100000:
-            return None
-        values[key] = value
-    w, h = values["width"], values["height"]
-    x, y = values["x"], values["y"]
-    if not (400 <= w <= 12000 and 250 <= h <= 12000):
+    values = [placement.get(k) for k in ("width", "height", "x", "y")]
+    if any(type(v) is not int or abs(v) > 100000 for v in values):
         return None
-    if not workareas:
+    width, height, x, y = values
+    if width < 400 or height < 250:
         return None
-
-    def intersection(area):
-        l, t, r, b = area
-        return max(0, min(x+w, r)-max(x, l)) * max(0, min(y+h, b)-max(y, t))
-
-    area = max(workareas, key=intersection)
-    if intersection(area) < 120 * 45:
-        # The saved display is gone; centre the window on the primary display.
-        area = workareas[0]
-        l, t, r, b = area
-        w = min(w, max(770, r-l))
-        h = min(h, max(510, b-t))
-        x = l + max(0, (r-l-w)//2)
-        y = t + max(0, (b-t-h)//2)
+    screen_w, screen_h = root.winfo_screenwidth(), root.winfo_screenheight()
+    if min(screen_w, screen_h) <= 0:
+        return None
+    width = min(width, screen_w)
+    height = min(height, screen_h)
+    # A title bar and at least a strip of the window should remain accessible.
+    if x + width < 160 or x > screen_w - 160 or y + height < 60 or y > screen_h - 60:
+        x = max(0, (screen_w - width) // 2)
+        y = max(0, (screen_h - height) // 2)
     else:
-        l, t, r, b = area
-        w = min(w, max(770, r-l))
-        h = min(h, max(510, b-t))
-        # Keep the title bar and enough of the window visible to grab/resize.
-        x = max(l- w + 160, min(x, r-160))
-        y = max(t, min(y, b-65))
-    return (w, h, x, y, bool(placement.get("maximized", False)))
+        x = max(0, min(x, screen_w - 160))
+        y = max(0, min(y, screen_h - 60))
+    return (width, height, x, y, placement.get("maximized") is True)
 
-
-def _window_move_absolute_on_windows(root, x, y):
-    """Tk's negative geometry offsets mean 'from right/bottom', not screen X/Y.
-
-    Move the outer window frame with Win32 when a second monitor sits at X<0.
-    For normal positive coordinates Tk's own geometry is sufficient.
-    """
-    if os.name != "nt":
-        return
-    try:
-        import ctypes
-        handle = int(root.wm_frame(), 0)
-        SWP_NOSIZE, SWP_NOZORDER, SWP_NOACTIVATE = 0x0001, 0x0004, 0x0010
-        ctypes.windll.user32.SetWindowPos(ctypes.c_void_p(handle), None,
-                                           int(x), int(y), 0, 0,
-                                           SWP_NOSIZE | SWP_NOZORDER | SWP_NOACTIVATE)
-    except (AttributeError, OSError, ValueError, TypeError):
-        pass  # Tk still restores the chosen width and height.
 
 class CalculatorSkinApp(LiveApp):
     """NumWorks skin with mutually exclusive file and live-development modes.
@@ -1729,7 +1627,6 @@ class CalculatorSkinApp(LiveApp):
                  profile_speed: bool = False, start_live: bool = False):
         self.art_path = art_path
         self.art = Image.open(art_path).convert("RGB")
-        self._theme_art_original = self.art.copy()
         self.art_px = self.art.size
         self._canvas_image = None
         self._canvas_screen = None
@@ -1782,25 +1679,15 @@ class CalculatorSkinApp(LiveApp):
         if start_live:
             self.root.after(260, self._start_builder)
 
-    # NUMPLAY_WINDOW_MEMORY_V1: restore on launch, save only on an actual close.
     def _restore_window_placement(self):
-        saved = _window_settings_read().get("window")
-        placement = _window_safe_geometry(saved, _window_workareas(self.root))
+        placement = _safe_window_geometry(_read_settings().get("window"), self.root)
         self._window_last_normal = None
-        self._window_restoring = False
+        self._window_restoring = bool(placement)
         if placement is None:
             return
-        w, h, x, y, maximized = placement
-        self._window_last_normal = (w, h, x, y)
-        self._window_restoring = True
-        # On Windows negative X means a display left of the primary one.
-        # Always position the actual Win32 frame, rather than interpreting
-        # negative X as a distance measured from the right screen edge.
-        if os.name == "nt":
-            self.root.geometry(f"{w}x{h}+{max(0, x)}+{max(0, y)}")
-            self.root.after(45, lambda: _window_move_absolute_on_windows(self.root, x, y))
-        else:
-            self.root.geometry(f"{w}x{h}{x:+d}{y:+d}")
+        width, height, x, y, maximized = placement
+        self._window_last_normal = (width, height, x, y)
+        self.root.geometry(f"{width}x{height}+{x}+{y}")
         if maximized:
             self.root.after(110, self._restore_window_maximized)
         self.root.after(200, self._finish_window_restoring)
@@ -1823,29 +1710,25 @@ class CalculatorSkinApp(LiveApp):
         if getattr(self, "_window_restoring", False) or self.fullscreen:
             return
         try:
-            if self.root.state() != "normal":
-                return
-            w, h = self.root.winfo_width(), self.root.winfo_height()
-            x, y = self.root.winfo_x(), self.root.winfo_y()
-            if w >= 400 and h >= 250:
-                self._window_last_normal = (w, h, x, y)
+            if self.root.state() == "normal":
+                width, height = self.root.winfo_width(), self.root.winfo_height()
+                if width >= 400 and height >= 250:
+                    self._window_last_normal = (width, height,
+                                                self.root.winfo_x(), self.root.winfo_y())
         except tk.TclError:
             pass
 
     def _save_window_placement(self):
         try:
             state = self.root.state()
-            maximized = state == "zoomed"
-            if self.fullscreen:
-                maximized = False  # Fullscreen is intentionally not persistent.
             if state == "normal" and not self.fullscreen:
                 self._remember_window_geometry()
-            geom = self._window_last_normal
-            if geom is None:
+            if self._window_last_normal is None:
                 return
-            w, h, x, y = geom
-            _window_settings_save({"width": w, "height": h, "x": x, "y": y,
-                                   "maximized": maximized})
+            width, height, x, y = self._window_last_normal
+            _save_setting("window", {"width": width, "height": height,
+                                     "x": x, "y": y,
+                                     "maximized": state == "zoomed" and not self.fullscreen})
         except (OSError, ValueError, tk.TclError) as exc:
             print(f"[NumPlay] Could not save window placement: {exc}", file=sys.stderr)
 
@@ -1992,12 +1875,11 @@ class CalculatorSkinApp(LiveApp):
         self.root.focus_force()
         self.root.after(150, self.refocus_input)
 
-    # NUMPLAY_DARK_MODE_V1: immediate, persistent user-selected interface theme.
     def _toggle_dark_mode(self):
         requested = "dark" if self.dark_mode_var.get() else "light"
         self._apply_interface_theme(requested)
         try:
-            _save_theme_preference(requested)
+            _save_setting("theme", requested)
         except OSError as exc:
             messagebox.showwarning("NumPlay theme",
                                    f"Theme changed, but could not save it for next time:\n{exc}",
@@ -2072,16 +1954,12 @@ class CalculatorSkinApp(LiveApp):
         except (tk.TclError, AttributeError):
             pass
 
-        # Mason's segmented labels have their own selection-colour closure.
+        # Refresh the selected view and mode labels without switching modes.
         # Re-running the existing variable trace repaints them without calling
         # the mode-switch commands or restarting the compiler/emulator.
         for var in (self.view_var, self.mode_var):
             var.set(var.get())
-        # Make the large calculator illustration comfortable at night too.
-        # Only the static shell image is dimmed; the actual 320x240 LCD pixels
-        # are always presented at their exact original brightness and colours.
-        self.art = (ImageEnhance.Brightness(self._theme_art_original).enhance(0.54)
-                    if CURRENT_THEME == "dark" else self._theme_art_original)
+        # Redraw the native-screen border and preserve the original artwork.
         self._art_geometry = (0, 0, 0, 0)
         try:
             self._resize()
