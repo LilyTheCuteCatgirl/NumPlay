@@ -362,6 +362,19 @@
     "repo": "https://github.com/Mason363/NumPlay/tree/main/games/breakout"
   },
   {
+    "id": "suika",
+    "title": "Suika Game",
+    "tagline": "A little fruit. A big merge.",
+    "credit": "Game made by Bobydeluxe",
+    "top": "0xD8D9A6",
+    "bottom": "0x36563C",
+    "accent": "0xF5AD69",
+    "records": ["suika.sav"],
+    "shots": ["docs/shot.png"],
+    "app": "SuikaGame.nwa",
+    "repo": "https://github.com/Mason363/NumPlay/tree/main/games/suika"
+  },
+  {
     "id": "numvisuals",
     "title": "NumVisuals",
     "tagline": "Backgrounds, clocks, timers",
