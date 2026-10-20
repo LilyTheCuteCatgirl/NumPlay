@@ -20,6 +20,26 @@ Your progress is also copied into a Python script, `numplay_saves.py`, so updati
 
 In every game, **Back** pauses, and the pause menu has a small **Quit game** button. It always asks first, since Back sits right next to OK.
 
+## Suika Game
+
+![Suika Game](../games/suika/docs/shot.png)
+
+| Key | What it does |
+| --- | --- |
+| **Left / Right** | Aim the dropper |
+| **OK / EXE** | Drop one fruit |
+| **1** | Hold or swap once per drop |
+| **2** | Suggest a placement, preferring a matching fruit |
+| **Back** | Pause / resume |
+| **Home / On-Off** | Save and leave |
+
+Merge matching fruit to reach the watermelon. The guide predicts the first
+contact; it turns green over a matching fruit. A red danger bar gives the pile
+time to settle. The next three fruits and the reserve stay visible. Pause stops
+physics, and **New game** asks before replacing a run. **Title screen**, then
+**Back**, returns to the NumPlay catalogue with the run saved. This game is
+English-only. [More details](../games/suika/README.md).
+
 ## NumDash
 
 <img src="media/numdash.gif" width="320" align="right" alt="NumDash gameplay: Stereo Madness">
