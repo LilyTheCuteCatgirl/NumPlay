@@ -31,7 +31,7 @@ APP_SPACE = 2031616
 # the games that fit it (NumPlay draws their text there: see launcher/src/compat.c)
 UPSILON_RAM = 107674
 UPSILON_GAMES = crossyroad blockblast portal tetris dinorun chess flappybird pacman snake connectfour solitaire g2048 minesweeper \
-  breakout numvisuals
+  breakout suika numvisuals
 
 # NumPlay and its discreet versions: the same app, with another name and icon
 # on the calculator's home screen. Each one is a release file.
