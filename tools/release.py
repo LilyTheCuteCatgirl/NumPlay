@@ -46,7 +46,7 @@ LANGUAGES = [
     ("NumPlay-French.nwa", "NumPlay en français : tous les jeux, en français"),
     ("NumPlay-Chinese.nwa", "NumPlay 中文版：所有游戏，简体中文"),
 ]
-UPSILON = ("NumPlay-Upsilon.nwa", "For calculators running Upsilon (N0110, N0115): the 15 games that fit in the memory "
+UPSILON = ("NumPlay-Upsilon.nwa", "For calculators running Upsilon (N0110, N0115): the 16 games that fit in the memory "
            "Upsilon gives apps. Install it with nwlink, see the README")
 
 
