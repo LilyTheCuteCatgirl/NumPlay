@@ -55,6 +55,8 @@ jobs:
           make -C games/numblocks host test
           make -C games/championisland host test
           make -C games/undertale host test
+          make -C games/suika test
+          python3 tests/test_suika.py build/apps/SuikaGame.nwa
 
       - uses: actions/upload-artifact@v4
         with:
