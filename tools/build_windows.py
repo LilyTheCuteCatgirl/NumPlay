@@ -10,15 +10,15 @@ Run from PowerShell in the repository root:
     python tools/build_windows.py --organize-only --tidy-legacy
     python tools/build_windows.py --watch --launcher-only --skip-languages -j2
 
-V7 keeps Make's intermediate outputs untouched under build/ and atomically
+It keeps Make's intermediate outputs untouched under build/ and atomically
 exports finished calculator apps into top-level dist/, including the stable
 live-emulator input dist/live/NumPlay.nwa. `--watch` monitors source edits and
 rebuilds incrementally, publishing only after successful builds. `--organize-only`
 exports an existing successful build with no toolchain necessary.
 
-V7 also finds an existing Rustup installation under the current user's
+It also finds an existing Rustup installation under the current user's
 .cargo/bin even when VS Code did not refresh PATH; no permanent environment
-changes are needed. V5's Tetris nwlink.exe bridge and Windows-specific
+changes are needed. The Tetris nwlink.exe bridge and Windows-specific
 dependency installers are preserved unchanged. This script does not modify emulator code.
 """
 from __future__ import annotations
@@ -598,7 +598,7 @@ def publish_outputs(*, apps: bool, langs: bool, output: Path = OUTPUT,
 
 
 def safe_remove_legacy_duplicates(output: Path = OUTPUT) -> None:
-    """Opt-in cleanup of only byte-identical V5 exports in build/windows-nwa.
+    """Opt-in cleanup of only byte-identical earlier exports in build/windows-nwa.
 
     Do not delete anything that wasn't safely copied into dist/. No recursive
     deletion; unknown or changed files are left exactly as they were.

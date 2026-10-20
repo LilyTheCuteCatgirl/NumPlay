@@ -193,8 +193,7 @@ class Calculator:
                             a = s["st_value"] & ~1
                             self.functions.append((a, a + s["st_size"], s.name))
             self.functions.sort()
-            e.stream.close() 
-            # meow
+            e.stream.close()  # (else Windows can't delete the temporary folder: the file is still open)
         uc = self.uc = Uc(UC_ARCH_ARM, UC_MODE_THUMB | UC_MODE_MCLASS)
         uc.mem_map(FLASH, FLASH_SIZE)
         uc.mem_map(SRAM, SRAM_SIZE)

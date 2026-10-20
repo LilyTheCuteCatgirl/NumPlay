@@ -7,3 +7,4 @@ games/tetris/*/target/
 games/tetris/tetris/src/data/image.nppm
 # made by the Pages workflow (tools/badges.py)
 docs/badges/
+dist/
