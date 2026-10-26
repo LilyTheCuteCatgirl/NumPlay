@@ -1,4 +1,4 @@
-/* NumPlay Studio — minimal UI, original kit format and in-browser .nwa linker.
+/* NumPlay Studio - minimal UI, original kit format and in-browser .nwa linker.
  * Requires customize/kit/ and customize/ld/ produced by NumPlay's existing workflows.
  * No game data, firmware addresses, or sizes are hard-coded into the UI.
  */
@@ -351,6 +351,7 @@
       b.disabled = busy || !canBuild;
       b.textContent = busy ? 'Building…' : b.id === 'build-button' ? 'Download NumPlay.nwa' : 'Download';
     }
+    if (window.NumPlaySaveVault) window.NumPlaySaveVault.updateInstallAvailability(canBuild && !busy, selected);
     $('build-version').textContent = kit.version ? 'v' + String(kit.version).replace(/^v/, '') : '';
     renderGames(); renderRoms(); updateSaved();
   }
@@ -635,6 +636,84 @@
     if (bytes > limit()) throw new Error('This build needs ' + fmt(bytes - limit()) + ' more than your calculator can hold.');
     return { data: nwa, filename: 'NumPlay.nwa' };
   }
+  // ----- calculator-specific final link (the .nwa alone is relocatable) -----
+  // Uses the very same local ld/objcopy WebAssembly tools as the customizer.
+  // eadk.o is supplied by the NumWorks app uploader. Local copies can be put
+  // at ld/eadk.o; the official-runtime mirror is an online fallback.
+  let eadkRuntime = null;
+  async function getEadkRuntime() {
+    if (eadkRuntime) return eadkRuntime;
+    eadkRuntime = (async () => {
+      try {
+        const r = await fetch('ld/eadk.o');
+        if (r.ok) {
+          const bytes = new Uint8Array(await r.arrayBuffer());
+          if (bytes[0] === 0x7f && bytes[1] === 0x45 && bytes[2] === 0x4c && bytes[3] === 0x46) return bytes;
+        }
+      } catch (_) { /* optional local file */ }
+      // Pinned version of the NumWorks uploader's EADK object, hosted separately
+      // instead of adding an unlicensed binary blob to NumPlay source control.
+      const url = 'https://cdn.jsdelivr.net/gh/elouangrimm/numflash@9beaf363127000e4779c8fd5ee20886805edce0b/js/vendor/eadk-o.js';
+      const module = await import(url);
+      if (!(module.EADK_O instanceof Uint8Array)) throw new Error('Unable to load the NumWorks app runtime.');
+      return module.EADK_O;
+    })().catch(e => { eadkRuntime = null; throw new Error('NumWorks app runtime unavailable: ' + (e.message || e)); });
+    return eadkRuntime;
+  }
+  function finalLinkScript(region) {
+    const { flashStart: fs, flashLength: fl, ramStart: rs, ramLength: rl, trampolineStart: ts } = region;
+    for (const n of [fs, fl, rs, rl, ts]) if (!Number.isSafeInteger(n) || n <= 0) throw new Error('Invalid hardware memory layout.');
+    return `MEMORY { FLASH (rx) : ORIGIN = ${fs}, LENGTH = ${fl}\n RAM (rwx) : ORIGIN = ${rs}, LENGTH = ${rl} }
+ENTRY(_start);
+_userland_trampoline_address = ${ts};
+SECTIONS {
+ .eadk_app_info ORIGIN(FLASH) : {
+  LONG(0xDEC0BEBA); KEEP(*(.rodata.eadk_api_level))
+  LONG(ADDR(.rodata.eadk_app_name) - ORIGIN(FLASH));
+  LONG(SIZEOF(.rodata.eadk_app_icon));
+  LONG(ADDR(.rodata.eadk_app_icon) - ORIGIN(FLASH));
+  LONG(_start - ORIGIN(FLASH));
+  LONG(_eadk_app_end - ORIGIN(FLASH)); LONG(0xDEC0BEBA);
+ } >FLASH
+ .rodata.eadk_app_name : { KEEP(*(.rodata.eadk_app_name)) } >FLASH
+ .rodata.eadk_app_icon : { KEEP(*(.rodata.eadk_app_icon)) } >FLASH
+ .text : { . = ALIGN(4); *(.text) *(.text.*) } >FLASH
+ .rodata : { *(.rodata) *(.rodata.*) _eadk_app_end = .; } >FLASH
+ .data : { . = ALIGN(4); _data_section_start_flash = LOADADDR(.data);
+  _data_section_start_ram = .; *(.data) *(.data.*)
+  _data_section_end_ram = .; } >RAM AT >FLASH
+ .bss : { . = ALIGN(4); _bss_section_start_ram = .;
+  *(.bss) *(.bss.*) _bss_section_end_ram = .; } >RAM
+ .heap : { _heap_start = .; . = (ORIGIN(RAM) + LENGTH(RAM)); _heap_end = .; } >RAM
+}
+ASSERT(SIZEOF(.eadk_app_info) == 32, "Missing EADK API level");
+ASSERT(SIZEOF(.rodata.eadk_app_name) > 0, "Missing app name");
+ASSERT(SIZEOF(.rodata.eadk_app_icon) > 0, "Missing app icon");
+`;
+  }
+  async function linkForCalculator(nwa, region) {
+    if (!(nwa instanceof Uint8Array) || nwa.length < 64) throw new Error('Invalid NumPlay.nwa');
+    const [t, eadk] = await Promise.all([tools(), getEadkRuntime()]);
+    const elf = await run(t.ld, ['--gc-sections', '--allow-multiple-definition',
+      '-T', 'install.ld', 'eadk.o', 'app.nwa', '-o', 'installed.elf'], {
+      'install.ld': finalLinkScript(region), 'eadk.o': eadk, 'app.nwa': nwa,
+    });
+    const obj = await run(t.objcopy,
+      ['--output-target', 'binary', 'installed.elf', 'installed.bin'],
+      { 'installed.elf': elf.FS.readFile('installed.elf') });
+    const raw = obj.FS.readFile('installed.bin');
+    const view = new DataView(raw.buffer, raw.byteOffset, raw.byteLength);
+    if (raw.length < 64 || view.getUint32(0, true) !== 0xDEC0BEBA || view.getUint32(28, true) !== 0xDEC0BEBA)
+      throw new Error('Final app did not pass the NumWorks header check. No flash write started.');
+    if (raw.length > region.flashLength) throw new Error('App does not fit the connected calculator firmware.');
+    const rounded = Math.ceil(raw.length / 65536) * 65536;
+    const withEnd = rounded < region.flashLength ? rounded + 65536 : rounded;
+    const image = new Uint8Array(withEnd).fill(0xff);
+    image.set(raw);
+    return { image, appBytes: raw.length, flashStart: region.flashStart };
+  }
+  window.NumPlayStudioLink = linkForCalculator;
+
   function downloadBytes(data, filename) {
     const url = URL.createObjectURL(new Blob([data], { type: 'application/octet-stream' }));
     const a = node('a'); a.href = url; a.download = filename;
@@ -857,6 +936,7 @@
     $('sort').addEventListener('change', (e) => { state.sort = e.target.value; renderGames(); });
     $('clear-games').addEventListener('click', () => { state.picked.clear(); render(); });
     for (const id of ['build-button', 'mobile-download']) $(id).addEventListener('click', doBuild);
+    if (window.NumPlaySaveVault) window.NumPlaySaveVault.bindInstall(() => build(), () => pickedInOrder(), () => ({ ...space() }));
     $('open-settings').addEventListener('click', () => { syncSettings(); $('settings-dialog').showModal(); });
     $('settings-done').addEventListener('click', () => $('settings-dialog').close());
     $('dark-mode-setting').addEventListener('change', (e) => {
@@ -938,6 +1018,9 @@
       }
       restore();
       settingsUi(); events(); render();
+      if (window.NumPlaySaveVault) window.NumPlaySaveVault.init(kit).catch((error) => {
+        console.error('Vault initialization failed:', error);
+      });
       if (retro) {
         const allowed = Object.keys(EXT).filter((s) => (retro.systems || [1, 2, 3]).includes(EXT[s]));
         $('rom-files').accept = allowed.map((s) => '.' + s).join(',');

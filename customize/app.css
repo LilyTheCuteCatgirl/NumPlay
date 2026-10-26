@@ -1,4 +1,4 @@
-/* NumPlay Studio rework — deliberately monochrome, no frameworks. */
+/* NumPlay Studio rework : deliberately monochrome, no frameworks. */
 :root { color-scheme: light; font-family: Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", Arial, sans-serif; --ink: #111; --muted: #777; --border: #e5e5e5; --border-strong: #d3d3d3; --soft: #f6f6f6; --paper: #fff; --lime-soft: #eef9df; --lime-mid: #cdeca3; --lime-dark: #5f8e20; --red-soft: #faeaea; --red-mid: #e5b1b1; --red-dark: #8b2f2f; --yellow-mid: #ead562; }
 * { box-sizing: border-box; }
 html { scroll-behavior: smooth; }
@@ -316,3 +316,105 @@ html[data-theme="dark"] .readme-content blockquote, html[data-theme="dark"] .rea
   .readme-footer { padding: 12px 15px; }
   .nav-github { min-height: 34px; padding: 7px 8px; }
 }
+
+/* V8 Save Vault navigation and library. Existing game and build features unchanged. */
+.header { gap: 15px; }
+.view-tabs { display: flex; align-items: center; flex: 1 1 auto; gap: 5px; margin-left: 10px; }
+.view-tab { white-space: nowrap; background: var(--paper); color: var(--muted); border: 1px solid var(--border-strong); border-radius: 9px; padding: 8px 12px; font-size: 12px; font-weight: 650; }
+.view-tab.active { background: var(--lime-soft); color: var(--ink); border-color: #a9cd7d; }
+.view-tab:not(.active):hover { background: var(--soft); }
+.view-tab span { font-weight: 550; opacity: .7; }
+.install-calculator-button { margin-top: 10px; }
+.install-calculator-button:disabled { cursor: not-allowed; opacity: .55; }
+.backups-view { min-height: 440px; padding: 32px 0 55px; }
+.vault-head { display: flex; justify-content: space-between; align-items: flex-start; flex-wrap: wrap; gap: 20px; padding-bottom: 23px; border-bottom: 1px solid var(--border); }
+.vault-head h1 { font-size: 24px; letter-spacing: -.8px; margin: 0 0 5px; }
+.vault-head p { margin: 0; font-size: 13px; }
+.vault-actions { display: flex; gap: 8px; flex-wrap: wrap; }
+.vault-actions .button { padding: 9px 12px; font-size: 12px; }
+.vault-actions button:disabled { opacity: .52; cursor: not-allowed; }
+.vault-status { font-size: 12px; color: var(--muted); margin: 17px 0; min-height: 20px; }
+.vault-list { display: flex; flex-direction: column; gap: 0; border: 1px solid var(--border); border-radius: 12px; overflow: hidden; }
+.vault-item { display: flex; align-items: center; gap: 15px; padding: 14px 17px; border-bottom: 1px solid var(--border); background: var(--paper); }
+.vault-item:last-child { border-bottom: 0; }
+.vault-icon { width: 48px; height: 48px; flex: 0 0 48px; display: flex; justify-content: center; align-items: center; background: var(--soft); border-radius: 10px; font-size: 20px; }
+.vault-icon img { width: 100%; height: 100%; object-fit: contain; }
+.vault-details { flex: 1 1 auto; min-width: 0; }
+.vault-details strong { font-size: 14px; }
+.vault-details p { font-size: 11px; margin: 4px 0 0; overflow-wrap: anywhere; }
+.vault-meta { display: flex; flex-direction: column; align-items: flex-end; gap: 4px; text-align: right; flex: 0 0 auto; }
+.vault-meta strong { background: var(--lime-soft); color: #527b23; border: 1px solid #b2d58a; border-radius: 6px; font-size: 11px; padding: 3px 8px; }
+.vault-meta span { font-size: 11px; color: var(--muted); }
+.vault-empty { padding: 60px 22px; text-align: center; background: var(--paper); }
+.vault-empty h2 { margin: 0 0 8px; }
+.vault-empty p { max-width: 450px; margin: 0 auto 17px; }
+.vault-footnote { margin-top: 18px; color: var(--muted); font-size: 11px; }
+#vault-install-dialog .button { margin-top: 9px; }
+html[data-theme="dark"] .view-tab { background: #1b2123; color: #bbc7c5; }
+html[data-theme="dark"] .view-tab.active { background: #36512b; border-color: #759e60; color: #e7f4de; }
+html[data-theme="dark"] .view-tab:not(.active):hover { background: #30383a; }
+html[data-theme="dark"] .vault-item, html[data-theme="dark"] .vault-empty { background: #1b2123; }
+html[data-theme="dark"] .vault-icon { background: #30383a; }
+html[data-theme="dark"] .vault-meta strong { background: #2a4628; color: #d9f0c2; border-color: #608453; }
+@media (max-width: 1120px) { .header { flex-wrap: wrap; padding: 14px 0; } .view-tabs { order: 3; flex-basis: 100%; margin-left: 0; } }
+@media (max-width: 600px) { .vault-head { padding-bottom: 17px; } .vault-actions { width: 100%; } .vault-actions .button { flex: 1; min-width: 130px; } .backups-view { padding-top: 22px; } .vault-item { padding: 12px; gap: 10px; } .vault-meta span { font-size: 10px; } }
+body.showing-backups .mobile-dock { display: none !important; }
+
+/* USB backup progress (v9) */
+.vault-usb-progress { font-size: 12px; padding: 10px 12px; border: 1px solid var(--border-strong); border-radius: 8px; overflow-wrap: anywhere; background: var(--soft); }
+#vault-usb-connect { margin-bottom: 10px; }
+
+/* V11: one-click USB backup and direct install progress, light + dark. */
+.vault-work-dialog { width: min(510px, calc(100vw - 30px)); }
+.vault-work-dialog .dialog-top { align-items: center; }
+.vault-work-dialog .dialog-top h2 { margin: 0; }
+.work-intro { font-size: 12px; line-height: 1.55; color: var(--muted); margin: 8px 0 14px; }
+.work-status { font-size: 13px; font-weight: 600; line-height: 1.5; min-height: 22px; margin: 0 0 12px; overflow-wrap: anywhere; }
+.work-meter { height: 9px; width: 100%; border-radius: 30px; background: var(--track); overflow: hidden; border: 1px solid var(--border); }
+.work-meter > div { height: 100%; width: 0%; border-radius: inherit; background: linear-gradient(90deg, #8acb62, #cbea7a); transition: width 180ms ease-out; }
+.work-percent { font-size: 11px; font-variant-numeric: tabular-nums; text-align: right; color: var(--muted); margin: 6px 0 11px; }
+.work-result-list { list-style: none; padding: 0; margin: 9px 0 16px; max-height: 235px; overflow-y: auto; }
+.work-result-list li { display: flex; align-items: center; justify-content: space-between; gap: 12px; font-size: 12px; padding: 8px 3px; border-bottom: 1px solid var(--border); text-transform: capitalize; }
+.work-result-list small { color: var(--muted); font-size: 11px; text-transform: none; white-space: nowrap; }
+.work-bottom-note { font-size: 10px; color: var(--muted); line-height: 1.5; margin-top: 15px; }
+.vault-work-dialog .work-close:disabled { opacity: .36; cursor: default; }
+#vault-install-retry { margin: 10px 0; }
+html[data-theme="dark"] .work-meter { background: #303839; }
+html[data-theme="dark"] .work-meter > div { background: linear-gradient(90deg, #80bb53, #b4d77a); }
+
+
+/* V11.6: prominent 90% cable handoff, no browser-native install warnings. */
+.work-nwagra-note { padding: 12px 13px; margin: 0 0 15px; border: 1px solid #cbb66b; background: #fff7d9; color: #473d19; border-radius: 10px; font-size: 12px; line-height: 1.55; }
+.work-replug { border: 2px solid #90ba72; border-radius: 14px; padding: 20px; margin: 18px 0 14px; background: #f4faed; }
+.work-replug-label { color: #426b2b; font-size: 11px; font-weight: 800; letter-spacing: .075em; margin: 0 0 9px; }
+.work-replug h3 { font-size: clamp(21px, 4vw, 25px); font-weight: 780; line-height: 1.15; letter-spacing: -.7px; margin: 0 0 18px; }
+.work-replug-steps { list-style: none; padding: 0; margin: 0 0 16px; display: grid; gap: 14px; }
+.work-replug-steps li { display: flex; align-items: start; gap: 12px; transition: opacity .2s; }
+.work-replug-number { width: 30px; height: 30px; display: inline-flex; align-items: center; justify-content: center; flex: 0 0 30px; background: #141c12; color: #fff; border-radius: 50%; font-weight: 750; font-size: 14px; }
+.work-replug-steps strong { display: block; font-size: 15px; line-height: 1.4; }
+.work-replug-steps small { display: block; font-size: 12px; color: #5f6c5c; line-height: 1.45; margin-top: 1px; }
+.work-replug-steps li.not-yet { opacity: .4; }
+.work-replug-steps li.finished { opacity: .6; }
+.work-replug-steps li.finished .work-replug-number { background: #548c3f; }
+.work-replug.ready #vault-replug-step-3, .work-replug.ready #vault-replug-step-4 { opacity: 1; }
+.work-replug.ready #vault-replug-step-3 .work-replug-number, .work-replug.ready #vault-replug-step-4 .work-replug-number { background: #548c3f; }
+.work-replug-help { font-size: 11px; color: #4c5d47; line-height: 1.5; margin: 11px 0 0; }
+.work-decision { padding: 16px; border: 1px solid #b6bdad; background: #fafaf4; border-radius: 12px; margin: 13px 0 17px; }
+.work-decision h3 { font-size: 16px; margin-bottom: 8px; }
+.work-decision p { white-space: pre-line; font-size: 12px; line-height: 1.55; margin-bottom: 12px; overflow-wrap: anywhere; }
+.work-decision-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+.work-decision-actions .button { flex: 1 1 160px; font-size: 12px; padding: 9px 12px; }
+html[data-theme="dark"] .work-replug { background: #202c20; border-color: #5c8350; }
+html[data-theme="dark"] .work-replug-label { color: #b9e49e; }
+html[data-theme="dark"] .work-replug-number { background: #d0ecb7; color: #132112; }
+html[data-theme="dark"] .work-replug-steps small, html[data-theme="dark"] .work-replug-help { color: #b6c7b1; }
+html[data-theme="dark"] .work-replug-steps li.finished .work-replug-number, html[data-theme="dark"] .work-replug.ready #vault-replug-step-3 .work-replug-number, html[data-theme="dark"] .work-replug.ready #vault-replug-step-4 .work-replug-number { background: #8fbd73; color: #101a0c; }
+html[data-theme="dark"] .work-nwagra-note { background: #39321c; border-color: #82703d; color: #f0deb0; }
+html[data-theme="dark"] .work-decision { background: #222926; border-color: #515e52; }
+@media (max-width: 540px) { .work-replug { padding: 17px 14px; } .work-replug-steps strong { font-size: 14px; } }
+
+/* V11.7: the full restart and language choice are essential before restoring. */
+.work-replug #vault-replug-step-3 { padding: 11px 12px; margin: 0 -12px; border-radius: 9px; background: rgba(112, 174, 75, .12); }
+.work-replug #vault-replug-step-3.not-yet { opacity: .92; }
+.work-replug #vault-replug-step-4.not-yet { opacity: .67; }
+html[data-theme="dark"] .work-replug #vault-replug-step-3 { background: rgba(153, 199, 119, .14); }

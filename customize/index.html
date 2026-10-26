@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="theme-color" content="#ffffff">
   <meta name="description" content="Pick your NumPlay games and build a custom NumWorks app right in your browser.">
-  <title>NumPlay Studio — Build your NumPlay</title>
+  <title>NumPlay Studio | Build your NumPlay</title>
   <link rel="icon" href="favicon.png" type="image/png">
   <link rel="apple-touch-icon" href="apple-touch-icon.png">
   <script>
@@ -17,12 +17,19 @@
     } catch (_) { /* Storage may be blocked; default to light. */ }
   </script>
   <link rel="stylesheet" href="app.css">
+  <script src="usb-readonly.js" defer></script>
+  <script src="usb-installer.js" defer></script>
+  <script src="save-vault.js" defer></script>
   <script src="app.js" defer></script>
 </head>
 <body>
   <div class="page">
     <header class="header">
       <a class="brand" href="../" aria-label="NumPlay home">NumPlay<span class="brand-suffix"> Studio</span></a>
+      <nav class="view-tabs" role="group" aria-label="Studio views">
+        <button type="button" class="view-tab active" id="view-select" aria-pressed="true">Select games</button>
+        <button type="button" class="view-tab" id="view-backups" aria-pressed="false">Backed up games <span id="vault-tab-count"></span></button>
+      </nav>
       <nav class="header-actions" aria-label="Main navigation">
         <button class="nav-link nav-button" id="install-help" type="button">How to install</button>
         <a class="nav-link nav-github" href="https://github.com/Mason363/NumPlay" target="_blank" rel="noopener">GitHub ↗</a>
@@ -30,7 +37,7 @@
       </nav>
     </header>
 
-    <div class="workspace">
+    <div class="workspace" id="select-view">
       <main class="library" aria-labelledby="games-heading">
         <div class="section-heading">
           <div>
@@ -81,24 +88,86 @@
         <div class="panel-header"><h2>Your NumPlay</h2><span id="build-version" class="muted"></span></div>
         <div class="build-stats">
           <div class="stat-line"><span>Selected games</span><strong id="selected-count">0</strong></div>
-          <div class="stat-line"><span>Storage used</span><strong id="storage-text">—</strong></div>
+          <div class="stat-line"><span>Storage used</span><strong id="storage-text">...</strong></div>
           <div class="progress-track" role="progressbar" id="storage-meter" aria-label="App storage used" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0"><div id="storage-fill"></div></div>
-          <div class="stat-line hint"><span id="space-name">Standard NumWorks</span><span id="storage-left">— free</span></div>
+          <div class="stat-line hint"><span id="space-name">Standard NumWorks</span><span id="storage-left">... free</span></div>
         </div>
 
         <p id="build-note" class="build-note" role="status"></p>
         <button id="build-button" type="button" class="button button-primary button-wide" disabled>Download NumPlay.nwa</button>
+        <button id="install-calculator" type="button" class="button button-outline button-wide install-calculator-button">Install on calculator</button>
         <p class="small-note">Builds in your browser. No account needed.</p>
       </aside>
     </div>
+
+    <main id="backups-view" class="backups-view" hidden aria-labelledby="vault-title">
+      <div class="vault-head">
+        <div>
+          <h1 id="vault-title">Backed up games</h1>
+          <p class="muted">Your saves live here even when you remove a game from NumPlay.</p>
+        </div>
+        <div class="vault-actions">
+          <button type="button" class="button button-outline" id="vault-backup-usb">Back up calculator</button>
+          <button type="button" class="button button-outline" id="vault-import">Import saves</button>
+          <button type="button" class="button button-outline" id="vault-export">Export backup</button>
+        </div>
+      </div>
+      <div class="vault-status" id="vault-status" role="status">Checking local save library…</div>
+      <div class="vault-list" id="vault-list" aria-live="polite"></div>
+      <p class="vault-footnote">Stored locally in this browser, not on a server. Export a backup to protect against clearing browser data.</p>
+      <input type="file" id="vault-import-file" accept=".py,.json" multiple hidden>
+    </main>
 
     <footer class="footer">Made for NumWorks · <a href="https://github.com/Mason363/NumPlay" target="_blank" rel="noopener">NumPlay on GitHub</a></footer>
   </div>
 
   <div class="mobile-dock" id="mobile-dock">
-    <div><strong id="mobile-storage">—</strong><span id="mobile-count">0 selected</span></div>
+    <div><strong id="mobile-storage">...</strong><span id="mobile-count">0 selected</span></div>
     <button id="mobile-download" type="button" class="button button-primary" disabled>Download</button>
   </div>
+
+  <dialog id="vault-usb-dialog" class="dialog vault-work-dialog" aria-labelledby="vault-usb-title">
+    <div class="dialog-top"><h2 id="vault-usb-title">Back up calculator</h2><button class="close-button work-close" type="button" onclick="document.getElementById('vault-usb-dialog').close()" aria-label="Close">×</button></div>
+    <p class="work-intro">Your game saves are kept in this browser even after you remove a game.</p>
+    <p class="work-status" id="vault-usb-progress" role="status" aria-live="polite">Connecting…</p>
+    <div class="work-meter" id="vault-usb-bar" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0" aria-label="Backup progress"><div id="vault-usb-bar-fill"></div></div>
+    <p class="work-percent" id="vault-usb-percent">0%</p>
+    <ul class="work-result-list" id="vault-usb-results" aria-label="Game saves backed up"></ul>
+    <button class="button button-primary button-wide work-close" type="button" onclick="document.getElementById('vault-usb-dialog').close()">Done</button>
+  </dialog>
+
+  <dialog id="vault-install-dialog" class="dialog vault-work-dialog" aria-labelledby="vault-install-title">
+    <div class="dialog-top"><h2 id="vault-install-title">Install NumPlay</h2><button class="close-button work-close" type="button" onclick="document.getElementById('vault-install-dialog').close()" aria-label="Close">×</button></div>
+    <p class="work-intro">Studio backs up your saves, installs your selected NumPlay over USB, and restores your saves after restart. <strong>Other installed extra apps may be replaced.</strong> Keep USB connected during flashing, then follow the restart and reconnection steps.</p>
+    <p class="work-nwagra-note" id="vault-install-nwagra-note" hidden><strong>Nwagra mode:</strong> This installation uses space in the inactive firmware slot and may replace other extra apps. Studio checks that the active firmware is outside this area before writing.</p>
+    <p class="work-status" id="vault-install-progress" role="status" aria-live="polite">Connecting…</p>
+    <div class="work-meter" id="vault-install-bar" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0" aria-label="Installation progress"><div id="vault-install-bar-fill"></div></div>
+    <p class="work-percent" id="vault-install-percent">0%</p>
+    <section id="vault-install-replug" class="work-replug" hidden aria-labelledby="vault-replug-heading">
+      <p class="work-replug-label">ACTION REQUIRED: INSTALLATION PAUSED AT 90%</p>
+      <h3 id="vault-replug-heading">Reconnect your calculator</h3>
+      <ol class="work-replug-steps">
+        <li id="vault-replug-step-1"><span class="work-replug-number">1</span><div><strong>Unplug the USB cable</strong><small>Leave it unplugged until you have selected your language.</small></div></li>
+        <li id="vault-replug-step-2"><span class="work-replug-number">2</span><div><strong>Click OK below</strong><small>Only after you have unplugged the cable.</small></div></li>
+        <li id="vault-replug-step-3" class="not-yet"><span class="work-replug-number">3</span><div><strong>Fully restart the calculator and select your language</strong><small>Wait until it asks you to choose your language. Select your language on the calculator before reconnecting USB. Otherwise the next restart could erase the restored saves.</small></div></li>
+        <li id="vault-replug-step-4" class="not-yet"><span class="work-replug-number">4</span><div><strong>Now plug the USB cable back in</strong><small>Only after language selection is finished. Studio will restore your backed-up saves.</small></div></li>
+      </ol>
+      <button id="vault-install-unplugged" class="button button-primary button-wide" type="button">OK, I've unplugged it</button>
+      <p id="vault-replug-help" class="work-replug-help">Your app is already installed. The last 10% restores your game saves; don't reinstall NumPlay.</p>
+    </section>
+    <section id="vault-install-decision" class="work-decision" hidden aria-labelledby="vault-decision-heading">
+      <h3 id="vault-decision-heading">Check restore options</h3>
+      <p id="vault-decision-message"></p>
+      <div class="work-decision-actions">
+        <button type="button" id="vault-decision-safe" class="button button-primary">Keep calculator saves</button>
+        <button type="button" id="vault-decision-other" class="button button-outline">Replace with backup</button>
+      </div>
+    </section>
+    <ul class="work-result-list" id="vault-install-results" aria-label="Game saves restored"></ul>
+    <button class="button button-outline button-wide" type="button" id="vault-install-retry" hidden>Reconnect &amp; finish saves</button>
+    <button class="button button-primary button-wide work-close" type="button" onclick="document.getElementById('vault-install-dialog').close()">Done</button>
+    <p class="work-bottom-note">Experimental USB installation. Python scripts are backed up in your browser before flash; you can export your Save Vault from the Backed up games tab.</p>
+  </dialog>
 
   <dialog id="settings-dialog" class="dialog" aria-labelledby="settings-title">
     <form method="dialog" class="dialog-top"><h2 id="settings-title">Settings</h2><button type="submit" class="close-button" aria-label="Close settings">×</button></form>
