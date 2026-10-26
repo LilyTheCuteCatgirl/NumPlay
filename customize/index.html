@@ -1,208 +1,162 @@
 <!doctype html>
 <html lang="en">
 <head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<meta name="color-scheme" content="light">
-<title>NumPlay Studio: choose the games in your NumPlay</title>
-<meta name="description" content="NumPlay is real games rebuilt for the NumWorks calculator, in one app. Choose which go into yours, add your own Game Boy, NES and Sega games, and install it. NumPlay Studio builds it in your browser.">
-<link rel="canonical" href="https://mason363.github.io/NumPlay/customize/">
-<link rel="icon" href="favicon.png" type="image/png">
-<link rel="apple-touch-icon" href="apple-touch-icon.png">
-<meta name="theme-color" content="#f2f1ef">
-<meta property="og:type" content="website">
-<meta property="og:site_name" content="NumPlay">
-<meta property="og:title" content="NumPlay Studio: choose the games in your NumPlay">
-<meta property="og:description" content="NumPlay is real games rebuilt for the NumWorks calculator, in one app. Choose which go into yours, add your own Game Boy, NES and Sega games, and install it.">
-<meta property="og:url" content="https://mason363.github.io/NumPlay/customize/">
-<meta property="og:image" content="https://mason363.github.io/NumPlay/customize/og.png">
-<meta property="og:image:width" content="1200">
-<meta property="og:image:height" content="630">
-<meta name="twitter:card" content="summary_large_image">
-<meta name="twitter:title" content="NumPlay Studio: choose the games in your NumPlay">
-<meta name="twitter:description" content="NumPlay is real games rebuilt for the NumWorks calculator, in one app. Choose which go into yours, add your own Game Boy, NES and Sega games, and install it.">
-<meta name="twitter:image" content="https://mason363.github.io/NumPlay/customize/og.png">
-<script type="application/ld+json">
-{
-  "@context": "https://schema.org",
-  "@type": "WebApplication",
-  "name": "NumPlay Studio",
-  "url": "https://mason363.github.io/NumPlay/customize/",
-  "image": "https://mason363.github.io/NumPlay/customize/og.png",
-  "description": "NumPlay is real games rebuilt for the NumWorks calculator, in one app. Choose which go into yours, add your own Game Boy, NES and Sega games, and install it.",
-  "applicationCategory": "GameApplication",
-  "operatingSystem": "NumWorks calculator (N0110, N0115, N0120)",
-  "offers": { "@type": "Offer", "price": "0", "priceCurrency": "USD" },
-  "author": { "@type": "Person", "name": "Mason Chen", "url": "https://github.com/Mason363" },
-  "isPartOf": { "@type": "SoftwareSourceCode", "name": "NumPlay", "codeRepository": "https://github.com/Mason363/NumPlay", "license": "https://www.gnu.org/licenses/gpl-3.0.html" }
-}
-</script>
-<link rel="stylesheet" href="app.css">
-<script>
-  // (the intro plays the first time: the page stays hidden until it starts, so it doesn't show twice)
-  try {
-    if ((!localStorage.getItem('numplay-intro3') || /[?&]intro\b/.test(location.search)) && innerWidth >= 900 &&
-        !matchMedia('(prefers-reduced-motion: reduce)').matches) document.documentElement.classList.add('intro-wait');
-  } catch (e) {}
-  setTimeout(() => document.documentElement.classList.remove('intro-wait'), 5000);
-</script>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#ffffff">
+  <meta name="description" content="Pick your NumPlay games and build a custom NumWorks app right in your browser.">
+  <title>NumPlay Studio — Build your NumPlay</title>
+  <link rel="icon" href="favicon.png" type="image/png">
+  <link rel="apple-touch-icon" href="apple-touch-icon.png">
+  <script>
+    // Restore the chosen appearance before styles render (no light-theme flash).
+    try {
+      if (localStorage.getItem('numplay-studio-theme') === 'dark') {
+        document.documentElement.setAttribute('data-theme', 'dark');
+      }
+    } catch (_) { /* Storage may be blocked; default to light. */ }
+  </script>
+  <link rel="stylesheet" href="app.css">
+  <script src="app.js" defer></script>
 </head>
 <body>
-<main id="studio">
-  <div class="head">
-    <h1 class="title"><button id="replay" type="button" data-tip="Play the intro again"><span>NumPlay</span></button></h1>
-    <div class="chips">
-      <button id="app-chip" type="button" class="chip" aria-haspopup="dialog" aria-expanded="false" data-tip="Its icon and name on your calculator, and how it opens">
-        <img id="app-chip-icon" src="kit/variants/NumPlay.png" alt="" width="28" height="28">
-        <svg class="caret" viewBox="0 0 12 12" width="10" height="10" aria-hidden="true"><path d="M3 4.5l3 3 3-3" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>
-      </button>
-      <button id="lang-chip" type="button" class="chip lang" aria-haspopup="dialog" aria-expanded="false" data-tip="The language of its menus">
-        <span id="lang-chip-label">EN</span>
-        <svg class="caret" viewBox="0 0 12 12" width="10" height="10" aria-hidden="true"><path d="M3 4.5l3 3 3-3" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>
-      </button>
-    </div>
-    <p class="lede">Real games, rebuilt for the NumWorks. Choose yours and they go on your calculator as one app.</p>
-  </div>
+  <div class="page">
+    <header class="header">
+      <a class="brand" href="../" aria-label="NumPlay home">NumPlay<span class="brand-suffix"> Studio</span></a>
+      <nav class="header-actions" aria-label="Main navigation">
+        <button class="nav-link nav-button" id="install-help" type="button">How to install</button>
+        <a class="nav-link nav-github" href="https://github.com/Mason363/NumPlay" target="_blank" rel="noopener">GitHub ↗</a>
+        <button class="button button-outline" type="button" id="open-settings" aria-haspopup="dialog">⚙ Settings</button>
+      </nav>
+    </header>
 
-  <div class="games">
-    <div class="row-head"><h2>Games in NumPlay</h2></div>
-    <section id="small" class="grid small" aria-label="Games in NumPlay, best first"></section>
-  </div>
-
-  <aside class="side" aria-label="Big games, and your own Game Boy, NES and Sega games">
-    <div class="row-head">
-      <h2>Big games</h2>
-      <button id="space-chip" type="button" class="space-chip" aria-haspopup="dialog" aria-expanded="false" aria-label="Your calculator's space for apps">
-        <span id="space-chip-label">1.94 MB</span>
-        <svg class="caret" viewBox="0 0 12 12" width="10" height="10" aria-hidden="true"><path d="M3 4.5l3 3 3-3" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>
-      </button>
-    </div>
-    <section id="big" class="grid big" aria-label="Big games, best first"></section>
-    <section id="retro" class="retro" aria-label="Your own Game Boy, NES and Sega games" hidden>
-      <div class="row-head"><h2>Your own Game Boy, NES and Sega games</h2></div>
-      <label id="drop" class="drop" for="rom-file">
-        <span class="drop-art" aria-hidden="true"><i class="c1"></i><i class="c2"></i><i class="c3"></i></span>
-        <span class="drop-text">Add game files</span>
-        <span id="drop-sub" class="drop-sub">.gb .gbc .nes .sms .gg</span>
-      </label>
-      <input id="rom-file" type="file" multiple accept=".gb,.gbc,.nes,.sms,.gg">
-      <div id="carts" class="carts" aria-label="Your games"></div>
-    </section>
-    <footer class="foot">
-      <a href="https://github.com/Mason363/NumPlay">Made by Mason Chen as part of NumPlay</a>
-      <span aria-hidden="true">·</span>
-      <a href="../">NumPlay's page</a>
-    </footer>
-  </aside>
-
-  <section class="device" aria-label="Your calculator">
-    <div class="meter" aria-hidden="true">
-      <span id="used" class="used">0.00</span>
-      <div id="bar" class="bar"></div>
-      <span id="cap-of" class="cap-of"></span>
-    </div>
-    <div id="calc" class="calc">
-      <div class="plate">
-        <img class="calc-img" src="calculator.webp" alt="A NumWorks calculator" draggable="false" width="1018" height="2000">
-        <span class="legend ok" aria-hidden="true">install</span>
-        <span class="legend back" aria-hidden="true">download</span>
-        <button id="install" class="ok-key" type="button" aria-label="Install your NumPlay on your calculator" data-tip="Install it on your calculator"></button>
-        <button id="download" class="dl" type="button" aria-label="Download NumPlay.nwa" data-tip="Download NumPlay.nwa"></button>
-      </div>
-      <div class="well">
-        <img class="well-img" src="calculator.webp" alt="" draggable="false" width="1018" height="2000">
-        <div id="screen" class="screen" role="img" aria-label="Space on the calculator">
-          <div class="status"><span id="status-line"></span><span class="battery"><i id="battery"></i></span></div>
-          <div id="map" class="map"></div>
-          <div id="preview" class="preview" aria-hidden="true"><img alt=""></div>
-          <div class="drop-hint" aria-hidden="true">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 4v11"/><path d="M7 10l5 5 5-5"/><path d="M5 20h14"/></svg>
-            Drop to add
+    <div class="workspace">
+      <main class="library" aria-labelledby="games-heading">
+        <div class="section-heading">
+          <div>
+            <h2 id="games-heading">Games</h2>
+            <p id="game-count" class="muted">Loading game library…</p>
           </div>
         </div>
+
+        <label class="search-field" for="search">
+          <svg viewBox="0 0 24 24" width="19" height="19" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m16.3 16.3 4.2 4.2"/></svg>
+          <input id="search" type="search" placeholder="Search games…" autocomplete="off" aria-label="Search games">
+        </label>
+
+        <div class="toolbar">
+          <div class="filters" role="group" aria-label="Filter games">
+            <button type="button" class="filter active" id="filter-all" aria-pressed="true">All games</button>
+            <button type="button" class="filter" id="filter-selected" aria-pressed="false">Selected <span id="filter-count">0</span></button>
+          </div>
+          <div class="toolbar-right">
+            <label class="sort-label" for="sort">Sort
+              <select id="sort">
+                <option value="recommended">Recommended</option>
+                <option value="name">A–Z</option>
+                <option value="size">Size</option>
+              </select>
+            </label>
+            <button id="clear-games" type="button" class="text-button clear-button">Clear all</button>
+          </div>
+        </div>
+
+        <p class="order-hint" id="order-hint" hidden>Drag the six-dot handle to change the order games appear in NumPlay.</p>
+        <div id="game-list" class="game-list" aria-live="off"></div>
+        <div class="empty-state" id="empty-state" hidden>No games match your search.</div>
+
+        <section class="rom-panel" id="rom-panel" hidden aria-label="Retro-Go game files">
+          <div class="rom-heading">
+            <h3>Your Retro-Go games</h3>
+            <span class="muted">GB · GBC · NES · SMS · GG</span>
+          </div>
+          <p class="muted">Add your own legally obtained ROM files. They stay in your browser until you build; they are not uploaded.</p>
+          <label class="rom-drop" id="rom-drop" for="rom-files">+ Add ROM files <span id="rom-types">(.gb, .gbc, .nes, .sms, .gg)</span></label>
+          <input id="rom-files" type="file" multiple accept=".gb,.gbc,.nes,.sms,.gg" hidden>
+          <ul id="rom-list" class="rom-list"></ul>
+        </section>
+      </main>
+
+      <aside class="build-panel" aria-label="Your custom NumPlay">
+        <div class="panel-header"><h2>Your NumPlay</h2><span id="build-version" class="muted"></span></div>
+        <div class="build-stats">
+          <div class="stat-line"><span>Selected games</span><strong id="selected-count">0</strong></div>
+          <div class="stat-line"><span>Storage used</span><strong id="storage-text">—</strong></div>
+          <div class="progress-track" role="progressbar" id="storage-meter" aria-label="App storage used" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0"><div id="storage-fill"></div></div>
+          <div class="stat-line hint"><span id="space-name">Standard NumWorks</span><span id="storage-left">— free</span></div>
+        </div>
+
+        <p id="build-note" class="build-note" role="status"></p>
+        <button id="build-button" type="button" class="button button-primary button-wide" disabled>Download NumPlay.nwa</button>
+        <p class="small-note">Builds in your browser. No account needed.</p>
+      </aside>
+    </div>
+
+    <footer class="footer">Made for NumWorks · <a href="https://github.com/Mason363/NumPlay" target="_blank" rel="noopener">NumPlay on GitHub</a></footer>
+  </div>
+
+  <div class="mobile-dock" id="mobile-dock">
+    <div><strong id="mobile-storage">—</strong><span id="mobile-count">0 selected</span></div>
+    <button id="mobile-download" type="button" class="button button-primary" disabled>Download</button>
+  </div>
+
+  <dialog id="settings-dialog" class="dialog" aria-labelledby="settings-title">
+    <form method="dialog" class="dialog-top"><h2 id="settings-title">Settings</h2><button type="submit" class="close-button" aria-label="Close settings">×</button></form>
+    <div class="theme-setting" role="group" aria-labelledby="theme-title">
+      <span class="field-label" id="theme-title">Appearance</span>
+      <label class="theme-choice" for="dark-mode-setting">
+        <span>Light</span>
+        <input id="dark-mode-setting" type="checkbox" role="switch" aria-label="Dark mode">
+        <span class="theme-switch" aria-hidden="true"></span>
+        <span>Dark</span>
+      </label>
+    </div>
+    <p class="muted">Only change calculator storage if your firmware actually supports it.</p>
+    <label class="field-label" for="space-setting">Calculator storage</label>
+    <select id="space-setting" class="field"></select>
+    <p id="space-warning" class="field-help" hidden>Enlarged storage requires Nwagra. <a href="https://nwagyu.org/guide/help/enlarge-your-memory.html" target="_blank" rel="noopener">Read the setup guide ↗</a></p>
+    <label class="field-label" for="language-setting">Language</label>
+    <select id="language-setting" class="field"></select>
+    <label class="field-label" for="app-name-setting">App name <span class="muted">(20 characters max)</span></label>
+    <input class="field" id="app-name-setting" maxlength="20" spellcheck="false" value="NumPlay">
+    <label class="field-label" for="icon-setting">App icon</label>
+    <select id="icon-setting" class="field"></select>
+    <label class="custom-icon-label" for="custom-icon">Upload a custom PNG/JPEG icon</label>
+    <input id="custom-icon" type="file" accept="image/png,image/jpeg" hidden>
+    <label class="field-label" for="open-setting">Open as</label>
+    <select id="open-setting" class="field"><option value="numplay">NumPlay</option><option value="matrices">Matrices (disguised)</option></select>
+    <div id="secret-options" hidden>
+      <label class="field-label" for="secret-setting">Unlock with</label>
+      <select id="secret-setting" class="field"></select>
+      <label class="checkbox-label"><input id="hint-setting" type="checkbox" checked> Show unlock hint</label>
+    </div>
+    <button id="settings-done" type="button" class="button button-primary button-wide">Done</button>
+  </dialog>
+
+  <dialog id="install-dialog" class="dialog" aria-labelledby="install-title">
+    <form method="dialog" class="dialog-top"><h2 id="install-title">Install your app</h2><button type="submit" class="close-button" aria-label="Close installation instructions">×</button></form>
+    <p><strong>First: back up your saves!</strong> App installation can erase game save files. Make sure your <code>numplay_saves.py</code> and other <code>*_saves.py</code> scripts are backed up before installing.</p>
+    <ol class="install-steps"><li>Connect your NumWorks calculator with a USB cable.</li><li>Open NumWorks' official app installer.</li><li>Drop your downloaded <code>.nwa</code> file onto the installer.</li></ol>
+    <a class="button button-primary button-wide link-button" href="https://my.numworks.com/apps" target="_blank" rel="noopener">Open NumWorks installer ↗</a>
+    <a class="help-link" href="https://my.numworks.com/" target="_blank" rel="noopener">Retrieve your Python scripts ↗</a>
+  </dialog>
+
+
+  <dialog id="readme-dialog" class="dialog readme-dialog" aria-labelledby="readme-title">
+    <div class="dialog-top readme-top">
+      <div class="readme-heading">
+        <img id="readme-icon" class="readme-icon" alt="" src="kit/variants/NumPlay.png">
+        <div>
+          <h2 id="readme-title">Game information</h2>
+          <p id="readme-subtitle" class="muted"></p>
+        </div>
       </div>
-      <div class="body3d" aria-hidden="true"></div>
-      <a id="star" class="sticker" href="https://github.com/Mason363/NumPlay" target="_blank" rel="noopener" aria-label="Star NumPlay on GitHub" data-tip="Star NumPlay on GitHub|it helps other people find it"></a>
+      <form method="dialog"><button class="close-button" type="submit" aria-label="Close game information">×</button></form>
     </div>
-  </section>
-</main>
+    <div id="readme-content" class="readme-content" aria-live="polite">Loading README…</div>
+    <div class="readme-footer"><a id="readme-source" href="https://github.com/Mason363/NumPlay" target="_blank" rel="noopener noreferrer">View original README on GitHub ↗</a></div>
+  </dialog>
 
-<div id="app-pop" class="pop" role="dialog" aria-label="Your app" hidden>
-  <div class="pop-row">
-    <span class="pop-label">Icon</span>
-    <div id="icons" class="icon-pick" role="radiogroup" aria-label="Icon"></div>
-  </div>
-  <div class="pop-row">
-    <label class="pop-label" for="app-name">Name</label>
-    <input id="app-name" class="field" maxlength="20" spellcheck="false" autocomplete="off">
-  </div>
-  <div class="pop-row">
-    <span class="pop-label">Opens as</span>
-    <div class="segctl" role="radiogroup" aria-label="Opens as">
-      <button type="button" role="radio" data-open="numplay" aria-checked="true">NumPlay</button>
-      <button type="button" role="radio" data-open="matrices" aria-checked="false">Matrices</button>
-    </div>
-  </div>
-  <div id="secret-row" class="pop-row" hidden>
-    <label class="pop-label" for="secret">Secret</label>
-    <select id="secret" class="field"></select>
-    <label class="tick"><input id="hint" type="checkbox" checked> hint</label>
-  </div>
-</div>
-<div id="lang-pop" class="pop narrow" role="dialog" aria-label="Language" hidden>
-  <div id="langs" class="segctl col" role="radiogroup" aria-label="Language"></div>
-</div>
-<div id="space-pop" class="pop space-pop" role="dialog" aria-labelledby="space-title" hidden>
-  <b id="space-title" class="pop-title">Your calculator's space for apps</b>
-  <div id="spaces" class="segctl col spaces" role="radiogroup" aria-labelledby="space-title"></div>
-  <div id="nwagra" class="nwagra" hidden>
-    <ol class="xl-steps">
-      <li>Add the Nwagra bookmark from <a href="https://nwagyu.org/guide/help/enlarge-your-memory.html" target="_blank" rel="noopener">nwagyu's guide</a></li>
-      <li>Update your calculator twice on my.numworks.com</li>
-      <li>On the installer page, click the bookmark, then drop NumPlay.nwa</li>
-    </ol>
-    <p class="xl-warn">If your calculator then says exam mode is on, Nwagra doesn't work with its version.</p>
-  </div>
-</div>
-<input id="icon-file" type="file" accept="image/*" hidden>
-
-<div id="sheet" class="sheet" hidden>
-  <div class="sheet-card" role="dialog" aria-modal="true" aria-labelledby="sheet-title">
-    <button type="button" class="sheet-close" aria-label="Close">
-      <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"/></svg>
-    </button>
-    <h2 id="sheet-title"><span class="sheet-file">NumPlay.nwa</span> is downloading</h2>
-    <ol class="steps">
-      <li><span class="step-icon">
-        <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="6" y="2" width="12" height="20" rx="2.5"/><rect x="8.5" y="4.5" width="7" height="5" rx="0.5"/><path d="M9 13h.01M12 13h.01M15 13h.01M9 16h.01M12 16h.01M15 16h.01M9 19h.01M12 19h.01M15 19h.01"/></svg>
-      </span><span>Plug your calculator into this computer</span></li>
-      <li class="xl-only"><span class="step-icon">
-        <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 3h12v18l-6-4-6 4z"/></svg>
-      </span><span>Click the <a href="https://nwagyu.org/guide/help/enlarge-your-memory.html" target="_blank" rel="noopener">Nwagra</a> bookmark on the installer page</span></li>
-      <li><span class="step-icon">
-        <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 15V3"/><path d="M7 8l5-5 5 5"/><path d="M4 15v4a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-4"/></svg>
-      </span><span>Open NumWorks' installer and drop <span class="sheet-file">NumPlay.nwa</span> into it</span></li>
-    </ol>
-    <a class="install wide" href="https://my.numworks.com/apps" target="_blank" rel="noopener">Open the installer</a>
-    <a class="star-ask" href="https://github.com/Mason363/NumPlay" target="_blank" rel="noopener">
-      Like it? A star on GitHub helps other people find NumPlay
-    </a>
-  </div>
-</div>
-
-
-<noscript><p class="noscript">NumPlay Studio needs JavaScript to build your NumPlay. You can also <a href="https://github.com/Mason363/NumPlay/releases/latest/download/NumPlay.nwa">download NumPlay.nwa</a> with all of its games.</p></noscript>
-
-<div id="dock" class="dock" aria-label="Your NumPlay">
-  <span id="dock-used" class="dock-used"></span>
-  <button id="dock-download" type="button" class="dock-dl" aria-label="Download NumPlay.nwa">
-    <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 4v11"/><path d="M7 10l5 5 5-5"/><path d="M5 20h14"/></svg>
-  </button>
-  <button id="dock-install" type="button" class="install dock-install">Install</button>
-</div>
-
-<div id="tip" class="tip" role="tooltip"></div>
-<div id="toast" class="toast" role="status" aria-live="polite"></div>
-<script src="app.js"></script>
+  <div id="toast" class="toast" role="status" aria-live="polite"></div>
 </body>
 </html>
