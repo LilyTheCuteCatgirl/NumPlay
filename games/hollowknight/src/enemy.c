@@ -6930,6 +6930,13 @@ void enemies_debug(void) {
   printf("   geo %d pieces, %d in purse, mp %d\n", ng, g_pd.geo, g_pd.mp);
 }
 
+/* (tests: the enemy of the room's record ent out and alive) */
+bool enemies_alive_ent(int ent) {
+  for (int i = 0; i < MAX_ENEMIES; i++)
+    if (en[i].mode == EM_ALIVE && en[i].ent == ent) return true;
+  return false;
+}
+
 /* (tests: a hit on every enemy near the Knight, invincible or not) */
 void enemies_debug_hit(int damage) {
   for (int i = 0; i < MAX_ENEMIES; i++) {
