@@ -252,8 +252,8 @@ for e in ("FINISHED", "CONVO_FINISH", "CONVO START", "CONVO END", "BIG TITLE STA
     EVENTS.id(e)
 FIXED_EVENTS = len(EVENTS.list)   # (src/data.h: VMEV_*)
 # events the game's code sends that only some rooms' scripts know, numbered as each room numbers its own (src/data.h:
-# VMEV_*, by room): the Elder Baldur's corpse's
-NAMED_EVENTS = ("UPDATE SHAMAN",)
+# VMEV_*, by room): the Elder Baldur's corpse's, a shop's charm lesson's
+NAMED_EVENTS = ("UPDATE SHAMAN", "SHOP REGION INACTIVE", "SHOP REGION ACTIVE")
 
 # ---------------------------------------------------------------- the actions it runs: name -> (opcode, operands)
 # operand kinds: f i b s o value slots (u16), F I B S O V output variables (u8: 255 none), e event (u8), t event target,

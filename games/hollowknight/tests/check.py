@@ -17,6 +17,7 @@
   overcharmed on the fifth try and off again, kept by Home in the inventory and a load
 - the stag stations: each seen (their blanker faded out), come in by its gate, by the stag (called by its bell) and
   loaded at its bench
+- each shop's first charm bought: its lesson sent away by a key, the Knight free again
 - the Snail Shaman's temple, played as one game: his spell taken, the Elder Baldur killed, his talk opening the gate, and
   so after a save and a load too; its lifeblood cocoon broken through a load and a rest there, whole after another bench
 - the way to the False Knight, played room by room as one game (the Knight unhurt): from a new game's fall into King's
@@ -83,6 +84,8 @@ def main():
     with tempfile.TemporaryDirectory() as saves:
         rc, out = play("--gates", "stations", env={"HKSAVES": saves})
     results.append(report("stag stations: seen, the rides", rc, out, ("FAIL",)))
+    rc, out = play("--gates", "shopcharm")
+    results.append(report("a shop's first charm: its lesson, the Knight free after it", rc, out, ("FAIL",)))
     with tempfile.TemporaryDirectory() as saves:
         rc, out = play("--gates", "shaman", env={"HKSAVES": saves})
     results.append(report("the Snail Shaman: his spell, the Elder Baldur, his gate, saved and loaded", rc, out, ("FAIL",)))

@@ -818,6 +818,43 @@ static int texts_test(void) {
   return text_fails ? 1 : 0;
 }
 
+/* each shop's first charm: bought (each row from the top, as bought until one is a charm), its lesson up as the shop
+ * closes, then sent away by a key once it stops, the Knight's control given back (a shop's lesson: Input) */
+static int shop_charm_test(void) {
+  static const struct { const char *room; float x; const char *flags; } shops[] = {
+      {"Room_mapper", 17.35f, "123,149"}, {"Room_shop", 15.6f, "23,122"}, {"Room_Charm_Shop", 17.14f, "124"}};
+  int fails = 0;
+  shielded = true;
+  for (unsigned k = 0; k < sizeof shops / sizeof shops[0]; k++) {
+    text_room(shops[k].room, shops[k].x, 6.5f, shops[k].flags);
+    run_ticks(80, 0);
+    bool lesson = false;
+    for (int row = 0; row < 12 && !pd_flag(PDF_HAS_CHARM); row++) {
+      for (int t = 0; t < 30 && !hero_free(); t++) run_ticks(50, 0);   /* (the shop down, or what it gave) */
+      run_ticks(3, K_UP);
+      run_ticks(150, 0);
+      for (int i = 0; i < 8 && !shop_open(); i++) run_ticks(2, K_OK | K_JUMP), run_ticks(60, 0);   /* (its talk first) */
+      for (int i = 0; i < row; i++) run_ticks(2, K_DOWN), run_ticks(20, 0);
+      run_ticks(2, K_OK), run_ticks(40, 0);
+      run_ticks(2, K_OK), run_ticks(150, 0);
+      if (pd_flag(PDF_HAS_CHARM)) lesson = !shop_open() && !hero_free();
+      if (shop_open()) run_ticks(2, K_BACK), run_ticks(60, 0), run_ticks(2, K_BACK), run_ticks(60, 0);
+    }
+    run_ticks(300, 0);   /* (its stop, 5 s after it came up) */
+    bool waits = !hero_free();
+    run_ticks(2, K_JUMP);
+    run_ticks(100, 0);
+    bool ok = pd_flag(PDF_HAS_CHARM) && lesson && waits && hero_free();
+    printf("%s shop charm: %s: %s\n", ok ? "ok  " : "FAIL", shops[k].room,
+           !pd_flag(PDF_HAS_CHARM) ? "no charm bought" : !lesson ? "no lesson" : !waits ? "the lesson gone by itself"
+           : !hero_free() ? "the Knight without control after it" : "bought, the lesson sent away, the Knight free");
+    fails += !ok;
+  }
+  shielded = false;
+  printf("shop charm: %d failing\n", fails);
+  return fails ? 1 : 0;
+}
+
 /* the way to the False Knight (Mason363/NumPlay#172), played as one game, room by room, each room's keys from when the
  * Knight comes into it: from the new game's fall into King's Pass, through Dirtmouth and down its well, past the Temple of
  * the Black Egg, down through the tollbooth into Crossroads_03 (its lever's gates open: the game's Knight opens them from
@@ -947,6 +984,7 @@ static int gates_test(const char *which) {
   if (!strcmp(which, "charms")) return charms_test();
   if (!strcmp(which, "stations")) return stations_test();
   if (!strcmp(which, "shaman")) return shaman_test();
+  if (!strcmp(which, "shopcharm")) return shop_charm_test();
   if (!strncmp(which, "wander:", 7)) {   /* (wander:ROOM|all:seed:ticks) */
     char room[64];
     int seed = 1, ticks = 6000;
