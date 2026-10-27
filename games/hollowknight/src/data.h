@@ -1308,4 +1308,4 @@
 #define ROOM_ZONES {2, 4, 5, 4, 4, 5, 5, 5, 5, 5, 5, 5, 22, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6}
 #define MSG_FIREBALL 0
 #define MSG_DASH 1
-#define SEMI_PERSIST {259, 260, 261, 272, 273, 274}
+#define SEMI_PERSIST {3, 59, 198, 259, 260, 261, 272, 273, 274}

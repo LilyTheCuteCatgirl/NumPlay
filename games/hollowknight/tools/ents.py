@@ -999,10 +999,12 @@ def room(d, rooms, strings, persist, name, sprites=None, owners=None, rec_base=0
                 lib = _ref_file(d, ean["library"])
                 eclip = CLIP_INDEX.get(actors.clip_id("fx", unity.S(tk2d.animation(*lib)["clips"][ean["defaultClipId"]]["name"])), -1)
             layer, order = _sorting(splat) if splat else (0, 0)
-            persistent = any(c.get("class") == "PersistentBoolItem" for c in o["c"])
+            pbi = next((c.get("v") or {} for c in o["c"] if c.get("class") == "PersistentBoolItem"), None)
+            # (semi persistent: whole again once the Knight rests at a bench or dies, unless in its room then)
             recs.append(rec(ENT_OBJ, OK_COCOON, (o["pos"][0], o["pos"][1], o["pos"][2], 0),
                             (hc.get("waitMin", 2), hc.get("waitMax", 6), 0, 0), a=c0, group=cn, group2=g_hide,
-                            persist=persist.id(name, o["path"]) if persistent else NO_PERSIST, s0=len(pieces), s1=len(hits)))
+                            persist=persist.id(name, o["path"], semi=bool(pbi.get("semiPersistent"))) if pbi is not None
+                            else NO_PERSIST, s0=len(pieces), s1=len(hits)))
             recs += [rec(ENT_BOX, fl, box=b) for b, fl in hits]
             recs += pieces
             recs.append(rec(ENT_BOX, 0, (splat["lpos"][0] if splat else 0, splat["lpos"][1] if splat else 0,

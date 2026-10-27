@@ -178,6 +178,7 @@ void persist_clear(int bit);
 void obj_enter(void);
 void obj_tick(void);
 void obj_draw(void);
+void obj_keep_cocoons(void);
 void obj_swing_start(void);                                  /* a slash's hit shape on: what it hits, once */
 int obj_nail(const float *pts, int npts, float direction);   /* -> HB_* of what it touches */
 float rand_range(float lo, float hi);   /* Random.Range (floats) */
