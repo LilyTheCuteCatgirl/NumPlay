@@ -174,37 +174,39 @@ typedef struct {
   const uint8_t *px;
   const uint16_t *col;
   const uint8_t *opa;
-  int w, h, fmt;
+  int w, h;
+  int x, y, cw, ch, bits, stride;   /* the part kept: outside it, clear */
 } Img;
 
 static Img img(int im) {
   const ImageRec *r = image_rec(im);
   Img m;
-  m.w = r->w, m.h = r->h, m.fmt = r->fmt;
+  m.w = r->w, m.h = r->h, m.x = r->x, m.y = r->y, m.cw = r->cw, m.ch = r->ch, m.bits = r->bits;
+  m.stride = (m.cw * m.bits + 7) >> 3;
   m.px = cc_data + r->px;
-  if (r->fmt == FMT_RGB) {
-    m.col = (const uint16_t *)(const void *)m.px, m.opa = NULL;
-  } else {
-    m.col = (const uint16_t *)(const void *)(cc_data + r->pal);
-    m.opa = cc_data + r->pal + 2 * (r->ncolors_1 + 1);
-  }
+  m.col = (const uint16_t *)(const void *)(cc_data + r->pal);
+  m.opa = cc_data + r->pal + 2 * (r->ncolors_1 + 1);
   return m;
 }
 int gfx_image_w(int im) { return image_rec(im)->w; }
 int gfx_image_h(int im) { return image_rec(im)->h; }
 
+/* the palette index of pixel (x, y) of the picture, -1 if it is outside the part kept (clear) */
+static inline int index_at(const Img *m, int x, int y) {
+  x -= m->x, y -= m->y;
+  if ((unsigned)x >= (unsigned)m->cw || (unsigned)y >= (unsigned)m->ch) return -1;
+  if (m->bits == FMT_P8) return m->px[y * m->stride + x];
+  if (m->bits == FMT_P0) return 0;
+  uint8_t b = m->px[y * m->stride + (x >> 1)];
+  return x & 1 ? b >> 4 : b & 15;
+}
+
 /* the colour and opacity (0..255) of pixel (x, y) */
 static inline uint16_t texel(const Img *m, int x, int y, int *a) {
-  if (m->fmt == FMT_RGB) {
-    *a = 255;
-    return m->col[y * m->w + x];
-  }
-  int i;
-  if (m->fmt == FMT_P8)
-    i = m->px[y * m->w + x];
-  else {
-    uint8_t b = m->px[y * ((m->w + 1) >> 1) + (x >> 1)];
-    i = x & 1 ? b >> 4 : b & 15;
+  int i = index_at(m, x, y);
+  if (i < 0) {
+    *a = 0;
+    return 0;
   }
   *a = m->opa[i];
   return m->col[i];
@@ -212,29 +214,36 @@ static inline uint16_t texel(const Img *m, int x, int y, int *a) {
 
 /* a row of n pixels of the picture from (sx, sy), on p: each format its own loop (most of what is drawn) */
 static void row(const Img *m, int sx, int sy, int n, uint16_t *p, int alpha) {
+  sx -= m->x, sy -= m->y;
+  if ((unsigned)sy >= (unsigned)m->ch) return;
+  if (sx < 0) p -= sx, n += sx, sx = 0;
+  if (sx + n > m->cw) n = m->cw - sx;
+  if (n <= 0) return;
   bool plain = alpha >= 256 && blend_mode == BLEND_NORMAL;
-  if (m->fmt == FMT_RGB) {
-    const uint16_t *src = m->col + sy * m->w + sx;
-    if (plain)
-      for (int i = 0; i < n; i++) p[i] = src[i];
-    else
-      for (int i = 0; i < n; i++) put(p + i, src[i], alpha);
-  } else if (m->fmt == FMT_P8) {
-    const uint8_t *src = m->px + sy * m->w + sx;
+  const uint8_t *src = m->px + sy * m->stride;
+  if (m->bits == FMT_P8) {
+    src += sx;
     for (int i = 0; i < n; i++) {
       int k = src[i], a = m->opa[k];
       if (!a) continue;
       if (a == 255 && plain) p[i] = m->col[k];
       else put(p + i, m->col[k], (a + (a >> 7)) * alpha >> 8);
     }
-  } else {
-    const uint8_t *src = m->px + sy * ((m->w + 1) >> 1);
+  } else if (m->bits == FMT_P4) {
     for (int i = 0; i < n; i++) {
       int x = sx + i, k = x & 1 ? src[x >> 1] >> 4 : src[x >> 1] & 15, a = m->opa[k];
       if (!a) continue;
       if (a == 255 && plain) p[i] = m->col[k];
       else put(p + i, m->col[k], (a + (a >> 7)) * alpha >> 8);
     }
+  } else {   /* (one colour) */
+    int a = m->opa[0];
+    uint16_t c = m->col[0];
+    if (!a) return;
+    if (a == 255 && plain)
+      for (int i = 0; i < n; i++) p[i] = c;
+    else
+      for (int i = 0; i < n; i++) put(p + i, c, (a + (a >> 7)) * alpha >> 8);
   }
 }
 
@@ -261,13 +270,6 @@ void gfx_image_dark(int im, int x, int y, int alpha) {
   }
 }
 
-/* the index of pixel (x, y) of a paletted picture (inside it) */
-static inline int index_at(const Img *m, int x, int y) {
-  if (m->fmt == FMT_P8) return m->px[y * m->w + x];
-  uint8_t b = m->px[y * ((m->w + 1) >> 1) + (x >> 1)];
-  return x & 1 ? b >> 4 : b & 15;
-}
-
 /* the colour at (u, v), in 1/256ths of a pixel of the picture, between its four nearest pixels;
  * opacity 0..255. wrap: tiled, else clear outside. (Flat areas and opaque ones take shortcuts: this
  * runs for most pixels drawn.) */
@@ -275,34 +277,22 @@ static uint16_t bilinear(const Img *m, int u, int v, bool wrap, int *a_out) {
   u -= 128, v -= 128;
   int x0 = u >> 8, y0 = v >> 8, fx = (u & 255) >> 4, fy = (v & 255) >> 4;
   int x1 = x0 + 1, y1 = y0 + 1;
-  bool in0x = true, in1x = true, in0y = true, in1y = true;
   if (wrap) {
     if ((unsigned)x0 >= (unsigned)m->w) x0 %= m->w, x0 += x0 < 0 ? m->w : 0;
     if ((unsigned)y0 >= (unsigned)m->h) y0 %= m->h, y0 += y0 < 0 ? m->h : 0;
     x1 = x0 + 1 == m->w ? 0 : x0 + 1, y1 = y0 + 1 == m->h ? 0 : y0 + 1;
-  } else {
-    in0x = (unsigned)x0 < (unsigned)m->w, in1x = (unsigned)x1 < (unsigned)m->w;
-    in0y = (unsigned)y0 < (unsigned)m->h, in1y = (unsigned)y1 < (unsigned)m->h;
   }
   uint16_t c[4];
   int a[4];
-  if (m->fmt == FMT_RGB) {
-    c[0] = in0x && in0y ? m->col[y0 * m->w + x0] : 0, a[0] = in0x && in0y ? 255 : 0;
-    c[1] = in1x && in0y ? m->col[y0 * m->w + x1] : 0, a[1] = in1x && in0y ? 255 : 0;
-    c[2] = in0x && in1y ? m->col[y1 * m->w + x0] : 0, a[2] = in0x && in1y ? 255 : 0;
-    c[3] = in1x && in1y ? m->col[y1 * m->w + x1] : 0, a[3] = in1x && in1y ? 255 : 0;
-  } else {
-    int i0 = in0x && in0y ? index_at(m, x0, y0) : -1, i1 = in1x && in0y ? index_at(m, x1, y0) : -1;
-    int i2 = in0x && in1y ? index_at(m, x0, y1) : -1, i3 = in1x && in1y ? index_at(m, x1, y1) : -1;
-    if (i0 == i1 && i0 == i2 && i0 == i3) {   /* (a flat area) */
-      *a_out = i0 < 0 ? 0 : m->opa[i0];
-      return i0 < 0 ? 0 : m->col[i0];
-    }
-    c[0] = i0 < 0 ? 0 : m->col[i0], a[0] = i0 < 0 ? 0 : m->opa[i0];
-    c[1] = i1 < 0 ? 0 : m->col[i1], a[1] = i1 < 0 ? 0 : m->opa[i1];
-    c[2] = i2 < 0 ? 0 : m->col[i2], a[2] = i2 < 0 ? 0 : m->opa[i2];
-    c[3] = i3 < 0 ? 0 : m->col[i3], a[3] = i3 < 0 ? 0 : m->opa[i3];
+  int i0 = index_at(m, x0, y0), i1 = index_at(m, x1, y0), i2 = index_at(m, x0, y1), i3 = index_at(m, x1, y1);
+  if (i0 == i1 && i0 == i2 && i0 == i3) {   /* (a flat area) */
+    *a_out = i0 < 0 ? 0 : m->opa[i0];
+    return i0 < 0 ? 0 : m->col[i0];
   }
+  c[0] = i0 < 0 ? 0 : m->col[i0], a[0] = i0 < 0 ? 0 : m->opa[i0];
+  c[1] = i1 < 0 ? 0 : m->col[i1], a[1] = i1 < 0 ? 0 : m->opa[i1];
+  c[2] = i2 < 0 ? 0 : m->col[i2], a[2] = i2 < 0 ? 0 : m->opa[i2];
+  c[3] = i3 < 0 ? 0 : m->col[i3], a[3] = i3 < 0 ? 0 : m->opa[i3];
   int w[4] = {(16 - fx) * (16 - fy), fx * (16 - fy), (16 - fx) * fy, fx * fy};   /* (sum 256) */
   if ((a[0] & a[1] & a[2] & a[3]) == 255) {   /* (opaque: no weighting by opacity) */
     uint32_t R = 0, G = 0, B = 0;
