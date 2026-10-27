@@ -2,6 +2,14 @@
 
 What's new in each version of NumPlay. Every file of every version is on the [downloads page](https://github.com/Mason363/NumPlay/releases).
 
+## 1.18.0: PolyTrack
+
+- **New on its own:** PolyTrack, all 17 tracks with their loops, wall rides and tubes, on an engine from Boris-TH's PolyGT 3D.
+- **Balatro:** rearrange your cards and Jokers with Alpha.
+- **Jetpack Joyride:** the bullets, zappers, scientists, Barry's fall and the rooms work as in the game.
+- **Celeste:** the Celestial Resort's busiest rooms run at full speed.
+- **Fixed:** Hollow Knight's soul orb fills and its first tablet's lesson fits, Celeste no longer shows a hidden passage, and Monkey Mart's cashier stands behind a tall pile of money.
+
 ## 1.17.0: Angry Birds, Friday Night Funkin', UNO and Turbo Rush
 
 - **New on their own:** Angry Birds, Friday Night Funkin', UNO and Turbo Rush, by Bobydeluxe.
