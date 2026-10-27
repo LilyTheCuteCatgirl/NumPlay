@@ -1546,9 +1546,12 @@ static void blocker_die(Enemy *e) {
   if (e->ent != NO_ENT) persist_set(ent_at(e->ent)->persist), enemy_terrain_off(ent_at(e->ent));
   death_shake(e);
   FREEZE_MOMENT_1();
-  /* (the Snail Shaman hears of it) */
-  if (g_pd.shaman == 3) g_pd.shaman = 4;
-  else if (g_pd.shaman == 2) g_pd.shaman = 5;
+  /* (its corpse's Shaman Update: the Snail Shaman hears of it, behind his gate) */
+  if (g_pd.shaman == 2 || g_pd.shaman == 3) {
+    static const uint8_t update[NUM_ROOMS] = VMEV_UPDATE_SHAMAN;
+    g_pd.shaman = g_pd.shaman == 3 ? 4 : 5;
+    if (update[g_room.id] != 255) vm_broadcast(update[g_room.id]);
+  }
   e->mode = EM_CORPSE, e->st = 0, e->t0 = 0;
   e->body.vx = e->body.vy = 0, e->body.gravity_scale = 0, e->body.mask = 0;
   anim_play(&e->anim, CLIP(e, R_A8));
