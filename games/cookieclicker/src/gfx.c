@@ -178,12 +178,13 @@ typedef struct {
   int x, y, cw, ch, bits, stride;   /* the part kept: outside it, clear */
 } Img;
 
+static const uint8_t *unpacked(int im);
 static Img img(int im) {
   const ImageRec *r = image_rec(im);
   Img m;
-  m.w = r->w, m.h = r->h, m.x = r->x, m.y = r->y, m.cw = r->cw, m.ch = r->ch, m.bits = r->bits;
+  m.w = r->w, m.h = r->h, m.x = r->x, m.y = r->y, m.cw = r->cw, m.ch = r->ch, m.bits = r->bits & 15;
   m.stride = (m.cw * m.bits + 7) >> 3;
-  m.px = cc_data + r->px;
+  m.px = r->bits & IM_PACKED ? unpacked(im) : cc_data + r->px;
   m.col = (const uint16_t *)(const void *)(cc_data + r->pal);
   m.opa = cc_data + r->pal + 2 * (r->ncolors_1 + 1);
   return m;
@@ -210,6 +211,144 @@ static inline uint16_t texel(const Img *m, int x, int y, int *a) {
   }
   *a = m->opa[i];
   return m->col[i];
+}
+
+/* ------------------------------------------------------------------ packed pictures */
+/* Most pictures are packed (tools/pictures.py: its model() is unpack()'s): when one is drawn, it is unpacked into
+ * the cache, which keeps the ones drawn latest (40 KB holds what any screen of the game draws). */
+#define CACHE_BYTES 40960
+#define CACHE_SLOTS 254
+static uint8_t cache[CACHE_BYTES];
+static struct {
+  uint16_t im, len;
+  uint32_t off, used;
+} slot[CACHE_SLOTS];               /* in the order they lie in the cache */
+static int nslots;
+static uint32_t cache_end, cache_used, cache_clock;
+static uint8_t where[N_IMAGES];    /* a picture's slot + 1, 0 if it isn't in the cache */
+
+static void cache_drop(int s) {
+  where[slot[s].im] = 0;
+  cache_used -= slot[s].len;
+  for (int t = s; t + 1 < nslots; t++) slot[t] = slot[t + 1], where[slot[t].im] = (uint8_t)(t + 1);
+  nslots--;
+}
+/* room for len bytes at the cache's end, the pictures drawn longest ago dropped (but keep), the others moved
+ * together if need be */
+static uint8_t *cache_room(int im, uint32_t len, int keep) {
+  while (cache_used + len > CACHE_BYTES || nslots == CACHE_SLOTS) {
+    int old = -1;
+    for (int s = 0; s < nslots; s++)
+      if (slot[s].im != keep && (old < 0 || slot[s].used < slot[old].used)) old = s;
+    cache_drop(old);
+  }
+  if (cache_end + len > CACHE_BYTES) {
+    cache_end = 0;
+    for (int s = 0; s < nslots; s++) {
+      if (slot[s].off != cache_end) memmove(cache + cache_end, cache + slot[s].off, slot[s].len);
+      slot[s].off = cache_end, cache_end += slot[s].len;
+    }
+  }
+  slot[nslots].im = (uint16_t)im, slot[nslots].len = (uint16_t)len, slot[nslots].off = cache_end;
+  slot[nslots].used = ++cache_clock;
+  where[im] = (uint8_t)++nslots;
+  cache_used += len;
+  cache_end += len;
+  return cache + cache_end - len;
+}
+
+/* LZMA's range decoder, chances of a 0 out of 2048 */
+typedef struct {
+  const uint8_t *in;
+  uint32_t range, code;
+} Rc;
+static inline int rc_bit(Rc *rc, uint16_t *p) {
+  uint32_t bound = (rc->range >> 11) * *p;
+  int b;
+  if (rc->code < bound) rc->range = bound, *p += (2048 - *p) >> 4, b = 0;
+  else rc->code -= bound, rc->range -= bound, *p -= *p >> 4, b = 1;
+  if (rc->range < 1u << 24) rc->range <<= 8, rc->code = rc->code << 8 | *rc->in++;
+  return b;
+}
+
+/* the contexts (pictures.py's) */
+enum { GUESS = 0, NEW = 400, UNARY = 405, FIRST = 413, OTHER = 422, CONTEXTS = 423 };
+
+/* picture r's pixels, from its packed data in, into out (as a raw picture's); ref: its reference (map: its colours
+ * to this one's, the last for where it is clear outside its part), or NULL */
+static void unpack(const ImageRec *r, const uint8_t *in, const Img *ref, const uint8_t *map, int nref, uint8_t *out) {
+  int cw = r->cw, ch = r->ch, n = r->ncolors_1 + 1, bits = r->bits & 15, stride = (cw * bits + 7) >> 3;
+  uint16_t p[CONTEXTS];
+  uint8_t rows[2][256], mtf[256], cands[5];
+  memcpy(p, cc_data + OFF_PRIORS, sizeof p);
+  for (int i = 0; i < n; i++) mtf[i] = (uint8_t)i;
+  int seen = 0;
+  Rc rc = {in + 4, 0xFFFFFFFFu, (uint32_t)in[0] << 24 | (uint32_t)in[1] << 16 | (uint32_t)in[2] << 8 | in[3]};
+  for (int y = 0; y < ch; y++) {
+    uint8_t *row = rows[y & 1], *up = rows[(y & 1) ^ 1], *o = out + y * stride;
+    for (int x = 0; x < cw; x++) {
+      int L = x ? row[x - 1] : -1, U = y ? up[x] : -1;
+      int UL = x && y ? up[x - 1] : -1, UR = y && x + 1 < cw ? up[x + 1] : -1;
+      int shape = (L >= 0 && L == U) | (U >= 0 && U == UL) << 1 | (L >= 0 && L == UL) << 2 | (U >= 0 && U == UR) << 3;
+      int g[5] = {-1, L, U, UL, UR}, j = 0, got = -1;
+      if (ref) {
+        int v = index_at(ref, r->x + x, r->y + y), m = map[v < 0 ? nref : v];
+        g[0] = m == 255 ? -1 : m;
+      }
+      for (int s = 0; s < 5 && got < 0; s++) {   /* (the neighbours, each once: is it this one?) */
+        int c = g[s], k = 0;
+        if (c < 0) continue;
+        while (k < j && cands[k] != c) k++;
+        if (k < j) continue;
+        if (!rc_bit(&rc, &p[GUESS + (s * 5 + j) * 16 + shape])) got = c;
+        else cands[j++] = (uint8_t)c;
+      }
+      if (got < 0) {
+        if (seen < n && !rc_bit(&rc, &p[NEW + (j < 4 ? j : 4)])) got = seen++;
+        else {   /* (a colour seen before: its rank among the others, the latest first) */
+          int k = 0, q = 1;
+          while (k < 8 && rc_bit(&rc, &p[UNARY + k])) k++;
+          for (int t = k - 1; t >= 0; t--) q = q << 1 | rc_bit(&rc, &p[t == k - 1 ? FIRST + k : OTHER]);
+          for (int i = 0; got < 0; i++) {
+            int c = mtf[i], kk = 0;
+            while (kk < j && cands[kk] != c) kk++;
+            if (kk == j && --q == 0) got = c;
+          }
+        }
+      }
+      row[x] = (uint8_t)got;
+      if (mtf[0] != got) {
+        int i = 1;
+        while (mtf[i] != got) i++;
+        memmove(mtf + 1, mtf, (size_t)i);
+        mtf[0] = (uint8_t)got;
+      }
+      if (bits == 8) o[x] = (uint8_t)got;
+      else if (x & 1) o[x >> 1] |= (uint8_t)(got << 4);
+      else o[x >> 1] = (uint8_t)got;
+    }
+  }
+}
+
+/* a packed picture's pixels, unpacked (its reference first) */
+static const uint8_t *unpacked(int im) {
+  if (where[im]) {
+    slot[where[im] - 1].used = ++cache_clock;
+    return cache + slot[where[im] - 1].off;
+  }
+  const ImageRec *r = image_rec(im);
+  const uint8_t *in = cc_data + r->px;
+  int ref = -1;
+  if (r->bits & IM_REF) ref = in[0] | in[1] << 8, unpacked(ref);
+  uint8_t *out = cache_room(im, (uint32_t)(((r->cw * (r->bits & 15) + 7) >> 3) * r->ch), ref);
+  if (ref < 0) {
+    unpack(r, in, NULL, NULL, 0, out);
+  } else {
+    Img m = img(ref);   /* (where it is now) */
+    int nref = image_rec(ref)->ncolors_1 + 1;
+    unpack(r, in + 3 + nref, &m, in + 2, nref, out);
+  }
+  return out;
 }
 
 /* a row of n pixels of the picture from (sx, sy), on p: each format its own loop (most of what is drawn) */

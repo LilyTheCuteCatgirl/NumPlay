@@ -89,9 +89,9 @@ class Pack:
     def __init__(self):
         self.blob = bytearray(pictures.MAGIC)
         self.images = []          # the pictures, as drawn (pictures.plane)
-        self.groups = []          # (the pictures whose pixels are shared: pictures.lay_out)
+        self.labels = []          # their names, the icons' "icon <x> <y>" (pictures.lay_out)
         self.names = {}
-        self.recs = None
+        self.recs = self.priors = None
         self.defines = []
 
     def align(self, n=4):
@@ -104,7 +104,7 @@ class Pack:
         self.blob += data
         return off
 
-    def image(self, name, img, fmt="p8", ncolors=256, group=None):
+    def image(self, name, img, fmt="p8", ncolors=256, place=None):
         """adds a picture (RGB565, or quantized to a palette of ncolors, 16 for p4); returns its index"""
         w, h = img.size
         if fmt == "rgb":
@@ -120,12 +120,12 @@ class Pack:
             if name in self.names:
                 raise SystemExit(f"pack: two pictures named {name}")
             self.names[name] = len(self.images) - 1
-        self.groups.append(group or pictures.group(name))
+        self.labels.append(name or "icon %d %d" % place)
         return len(self.images) - 1
 
     def lay_out(self):
         """the pictures into data.bin"""
-        self.recs = pictures.lay_out(self.images, self.groups, self.put)
+        self.recs, self.priors = pictures.lay_out(self.images, self.labels, self.put)
 
 
 def load(ref, rel):
@@ -758,10 +758,11 @@ def main(ref, game_json):
             if np.asarray(cell)[..., 3].max() < 8:
                 icon_index.append(0xFFFF)
                 continue
-            icon_index.append(P.image(None, premul_resize(cell, (24, 24)), "p4", group=f"icons{y}"))
+            icon_index.append(P.image(None, premul_resize(cell, (24, 24)), "p4", place=(x, y)))
     P.lay_out()
     icons_off = P.put(struct.pack(f"<{len(icon_index)}H", *icon_index))
-    defs += [f"#define ICON_COLS {cols}", f"#define ICON_ROWS {rows}", f"#define OFF_ICONS {icons_off}"]
+    defs += [f"#define ICON_COLS {cols}", f"#define ICON_ROWS {rows}", f"#define OFF_ICONS {icons_off}",
+             f"#define OFF_PRIORS {P.priors}"]
 
     # ---- fonts
     F = os.path.join(ref, "fonts")
@@ -967,13 +968,8 @@ def main(ref, game_json):
         f.write("\n".join(lines))
     if UNKNOWN:
         print("pack: characters left out:", "".join(sorted(UNKNOWN)))
-    pictures.check(P.images, bytes(P.blob), dict(N_IMAGES=len(P.images), OFF_IMAGES=img_off))
-    sizes = {}
-    for g, (w, h, x, y, cw, ch, bits, n, px, pal) in zip(P.groups, P.recs):
-        g = re.sub(r"\d+$", "", g)
-        sizes[g] = sizes.get(g, 0) + (cw * bits + 7) // 8 * ch + 3 * n
-    print(f"data.bin: {len(P.blob)} bytes, {len(P.images)} pictures, texts {len(T.blob)}")
-    print("  pictures (before sharing): " + ", ".join(f"{k} {v // 1024} KB" for k, v in sorted(sizes.items(), key=lambda kv: -kv[1])))
+    pictures.check(P.images, bytes(P.blob), dict(N_IMAGES=len(P.images), OFF_IMAGES=img_off, OFF_PRIORS=P.priors))
+    print(f"data.bin: {len(P.blob)} bytes, {len(P.images)} pictures ({icons_off} bytes), texts {len(T.blob)}")
 
 
 if __name__ == "__main__":
