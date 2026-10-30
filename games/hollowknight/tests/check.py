@@ -20,6 +20,8 @@
 - each shop's first charm bought: its lesson sent away by a key, the Knight free again
 - the Snail Shaman's temple, played as one game: his spell taken, the Elder Baldur killed, his talk opening the gate, and
   so after a save and a load too; its lifeblood cocoon broken through a load and a rest there, whole after another bench
+- the enemies the game keeps dead until a rest: still dead as the Knight comes back, out again after a rest at a bench,
+  a death or a load at a bench, and after a rest in their own room; the persistent ones and a broken cocoon there not
 - the way to the False Knight, played room by room as one game (the Knight unhurt): from a new game's fall into King's
   Pass, and from the Aspid Hunters' arena by the hot spring, to his arena, where he comes down
 - every room played with its enemies hit, in a new game and after the bosses, drawn whole and fast (as a slow
@@ -89,6 +91,9 @@ def main():
     with tempfile.TemporaryDirectory() as saves:
         rc, out = play("--gates", "shaman", env={"HKSAVES": saves})
     results.append(report("the Snail Shaman: his spell, the Elder Baldur, his gate, saved and loaded", rc, out, ("FAIL",)))
+    with tempfile.TemporaryDirectory() as saves:
+        rc, out = play("--gates", "respawn", env={"HKSAVES": saves})
+    results.append(report("enemies out again after a rest, a death or a load at a bench", rc, out, ("FAIL",)))
     rc, out = play("--gates", "way")
     results.append(report("the way to the False Knight", rc, out, ("FAIL",)))
     # the soul orb: dark inside with no soul, its liquid white in it when full (in the screen's pixels at its middle)

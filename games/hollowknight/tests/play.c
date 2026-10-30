@@ -558,6 +558,105 @@ static int shaman_test(void) {
   return shaman_fails ? 1 : 0;
 }
 
+/* the enemies the game keeps dead until the Knight rests (semi persistent): killed, still dead as the Knight comes back;
+ * out again after a rest at a bench, a death, or a load at a bench; and after a rest at a bench in their own room (the
+ * game saved them as they died, their objects gone). The persistent ones (the Elder Baldur) and a broken lifeblood
+ * cocoon in the room rested in stay as they are */
+static int respawn_fails;
+static void respawn_check(bool ok, const char *what) {
+  printf("%s respawn: %s (in %s)\n", ok ? "ok  " : "FAIL", what, room_name(g_room.id));
+  respawn_fails += !ok;
+}
+static bool is_semi(int persist) {
+  static const uint16_t semi[] = SEMI_PERSIST;
+  for (unsigned k = 0; k < sizeof semi / sizeof semi[0]; k++)
+    if (semi[k] == persist) return true;
+  return false;
+}
+/* (the room's semi persistent enemies: how many, how many dead in the save, how many out alive) */
+static void semi_enemies(int *n, int *dead, int *alive) {
+  extern bool enemies_alive_ent(int ent);
+  int ne;
+  const Ent *es = room_ents(&ne);
+  *n = *dead = *alive = 0;
+  for (int i = 0; i < ne; i++)
+    if (es[i].type == ENT_OBJ && es[i].flags == OK_ENEMY && es[i].persist != NO_PERSIST && is_semi(es[i].persist)) {
+      (*n)++;
+      *dead += persist_get(es[i].persist);
+      *alive += enemies_alive_ent(i);
+    }
+}
+/* (each enemy in the room hit from afar until the semi persistent ones are dead) */
+static bool kill_semi(void) {
+  extern void enemies_debug_hit(int damage);
+  int n, dead, alive;
+  semi_enemies(&n, &dead, &alive);
+  for (int t = 0; t < 3000 && dead < n; t++) {
+    if (t % 10 == 0) enemies_debug_hit(30);
+    run_ticks(1, 0);
+    semi_enemies(&n, &dead, &alive);
+  }
+  run_ticks(100, 0);
+  return n && dead == n;
+}
+static bool semi_out(int room, float x, float y, bool out) {
+  game_enter(room, x, y, true);
+  run_ticks(30, 0);
+  int n, dead, alive;
+  semi_enemies(&n, &dead, &alive);
+  return out ? n && !dead && alive == n : n && dead == n && !alive;
+}
+static int respawn_test(void) {
+  if (getenv("HKSAVES")) {
+    extern void host_save_dir(const char *d);
+    host_save_dir(getenv("HKSAVES"));
+  }
+  setenv("HKHITR", "200", 1);
+  shielded = true;
+  game_new();
+  save_select(SAVE_SLOTS - 1);
+  const int room = ROOM_CROSSROADS_01;
+  const float rx = 40, ry = 12;
+  game_enter(room, rx, ry, true);
+  run_ticks(30, 0);
+  respawn_check(kill_semi(), "its semi persistent enemies killed");
+  respawn_check(semi_out(room, rx, ry, false), "come back to: still dead");
+  respawn_check(rest_at(ROOM_CROSSROADS_47, 29.34f, 7) && semi_out(room, rx, ry, true), "after a rest at a bench: out again");
+  kill_semi();
+  shielded = false, g_hero.cs.invulnerable = false;
+  hero_take_damage(SIDE_LEFT, 99, HAZ_NORMAL);
+  for (int t = 0; t < 1500 && g_room.id == room; t++) run_ticks(1, 0);
+  run_ticks(200, 0);
+  shielded = true;
+  respawn_check(g_room.id == ROOM_CROSSROADS_47 && semi_out(room, rx, ry, true), "killed, the Knight dead: out again");
+  kill_semi();
+  save_game();
+  game_new();
+  respawn_check(save_load(SAVE_SLOTS - 1) && game_respawn(), "killed, saved away from a bench, a new game, loaded");
+  run_ticks(200, 0);
+  respawn_check(g_room.id == ROOM_CROSSROADS_47 && semi_out(room, rx, ry, true), "loaded at a bench: out again");
+  /* (the temple: its Husk killed, the Elder Baldur (persistent) killed, the cocoon broken, a rest at its own bench) */
+  g_pd.fireball_level = 1, g_pd.has_spell = true, g_pd.shaman = 6;
+  game_enter(ROOM_CROSSROADS_SHAMANTEMPLE, 46, 8.5f, true);
+  run_ticks(30, 0);
+  kill_baldur();
+  const Ent *baldur = temple_ent(OK_ENEMY, EK_ELDERBALDUR), *cocoon = temple_ent(OK_COCOON, -1);
+  put_at(38.5f, 46.5f);
+  run_ticks(3, K_UP | K_ATTACK);
+  run_ticks(100, 0);
+  game_enter(ROOM_CROSSROADS_SHAMANTEMPLE, 46, 8.5f, true);
+  run_ticks(30, 0);
+  bool killed = kill_semi() && baldur && persist_get(baldur->persist) && cocoon && persist_get(cocoon->persist);
+  respawn_check(killed, "the temple's Husk and Elder Baldur killed, its cocoon broken");
+  respawn_check(rest_at(ROOM_CROSSROADS_SHAMANTEMPLE, 15.09f, 8), "rested at its bench");
+  respawn_check(semi_out(ROOM_CROSSROADS_SHAMANTEMPLE, 46, 8.5f, true) && persist_get(baldur->persist) &&
+                    persist_get(cocoon->persist), "come back to: the Husk out again, the Elder Baldur gone, the cocoon broken");
+  shielded = false;
+  unsetenv("HKHITR");
+  printf("respawn: %d failing\n", respawn_fails);
+  return respawn_fails ? 1 : 0;
+}
+
 /* the ground's seams, as the calculator rounds: from many places in every room the Knight lands on the ground, then is
  * put a few float steps lower (as near as rounding leaves him), and must walk both ways where no wall stops him; and
  * jumping at a wall, put a few steps nearer it, he must fall back down, not hang on it */
@@ -984,6 +1083,7 @@ static int gates_test(const char *which) {
   if (!strcmp(which, "charms")) return charms_test();
   if (!strcmp(which, "stations")) return stations_test();
   if (!strcmp(which, "shaman")) return shaman_test();
+  if (!strcmp(which, "respawn")) return respawn_test();
   if (!strcmp(which, "shopcharm")) return shop_charm_test();
   if (!strncmp(which, "wander:", 7)) {   /* (wander:ROOM|all:seed:ticks) */
     char room[64];
