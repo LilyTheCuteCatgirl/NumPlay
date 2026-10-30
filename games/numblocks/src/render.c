@@ -1189,6 +1189,35 @@ static bool project(float x, float y, float z, float *sx, float *sy) {
   return true;
 }
 
+#if NB_DIMS
+/* a mark for a place out of sight (world coordinates; far: as far as it is drawn): at the screen's edge the
+ * way to turn to it, or over it when it is on the screen past what is drawn; its tip (screen pixels) and the
+ * way it points (a unit vector, y down). False: in sight */
+bool view_mark(float x, float y, float z, float far, float *sx, float *sy, float *ux, float *uy) {
+  float rx = x - vc_x0 - ox, ry = y - vc_y0 - oy, rz = z - vc_z0 - oz;
+  float cz = rx * fwx + ry * fwy + rz * fwz, cx = rx * rgx + rz * rgz, cy = rx * upx + ry * upy + rz * upz;
+  float dx = cx, dy = -cy;
+  if (cz > 0.05f) {
+    float px = cx / cz / TAN_H, py = cy / cz / TAN_V;
+    if (px > -1 && px < 1 && py > -1 && py < 1) {
+      if (rx * rx + ry * ry + rz * rz <= far * far) return false;
+      *sx = (px + 1) * SCREEN_W / 2, *sy = (1 - py) * SCREEN_H / 2 - 4, *ux = 0, *uy = 1;
+      return true;
+    }
+    dx = px, dy = -py;
+  }
+  float l = sqrtf(dx * dx + dy * dy);
+  if (l < 1e-6f) dx = 0, dy = 1, l = 1;
+  dx /= l, dy /= l;
+  /* (between the boss bar and the hotbar) */
+  const float x0 = 10, x1 = SCREEN_W - 10, y0 = 28, y1 = SCREEN_H - 50, mx = (x0 + x1) / 2, my = (y0 + y1) / 2;
+  float tx = fabsf(dx) > 1e-6f ? (x1 - mx) / fabsf(dx) : 1e9f, ty = fabsf(dy) > 1e-6f ? (y1 - my) / fabsf(dy) : 1e9f;
+  float t = tx < ty ? tx : ty;
+  *sx = mx + dx * t, *sy = my + dy * t, *ux = dx, *uy = dy;
+  return true;
+}
+#endif
+
 /* the rectangle a box (its 8 corners, cache coordinates) covers on the picture: what of it is in front of
  * the camera, its edges cut where they pass behind (false: none of it is) */
 static bool rect_of(const float (*p)[3], int *r) {
