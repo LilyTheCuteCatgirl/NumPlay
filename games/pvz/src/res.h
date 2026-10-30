@@ -32,14 +32,15 @@ int anim_frame_at(int a, uint32_t t);
 typedef struct {
   int16_t x, y;             /* top-left from the anchor */
   uint16_t w, h;
-  const uint8_t *rows;
+  const uint8_t *rows, *end;   /* end: past its last row (data.bin keeps the frames in order, then the palettes) */
   uint8_t shared_rows;
 } Frame;
 static inline Frame frame_info(int f) {
   const uint8_t *p = table(T_FRAMES) + 12 * f;
+  int n = (int)rd32(pvz_bin + 32);   /* (the header: 6 tables, the animations, the frames) */
   uint32_t off = rd32(p + 8);
-  return (Frame){rds16(p), rds16(p + 2), rd16(p + 4), rd16(p + 6),
-                 pvz_bin + (off & 0x7fffffffu), (uint8_t)(off >> 31)};
+  return (Frame){rds16(p), rds16(p + 2), rd16(p + 4), rd16(p + 6), pvz_bin + (off & 0x7fffffffu),
+                 f + 1 < n ? pvz_bin + (rd32(p + 20) & 0x7fffffffu) : table(T_PALS), (uint8_t)(off >> 31)};
 }
 /* a palette: its colours (RGB565, aligned) */
 static inline const uint16_t *pal_colors(int p, int *n) {

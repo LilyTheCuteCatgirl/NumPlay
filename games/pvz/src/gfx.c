@@ -291,7 +291,7 @@ static void blit_frame(const Item *it, int fi, const uint16_t *pal, int bpp, int
       if (r >= f.h) break;
       if (r != last) {
         const uint8_t *e, *p = row_at(&f, bpp, r, &e);
-        if (!e) e = p + 4 * f.w + 8;
+        if (!e) e = f.end;   /* (the last row: up to the next frame) */
         decode_row(p, e, bpp, idx, vis, imin(f.w, 320));
         last = r;
       }
@@ -338,7 +338,7 @@ static void blit_frame(const Item *it, int fi, const uint16_t *pal, int bpp, int
       } else e = p + f.rows[r];
     } else {
       p = f.rows + rd16(f.rows + 2 * r);
-      e = r + 1 < f.h ? f.rows + rd16(f.rows + 2 * r + 2) : p + 4 * f.w + 8;
+      e = r + 1 < f.h ? f.rows + rd16(f.rows + 2 * r + 2) : f.end;   /* (the last row: up to the next frame) */
     }
     uint16_t *out = band + (y % GFX_BAND) * SCREEN_W;
     int x = 0, w = f.w;
@@ -496,8 +496,10 @@ static void draw_text(const Item *it, int y0, int y1, int dx, int dy, uint16_t c
 
 int gfx_paragraph(int font, int x, int y, int width, const char *s, uint16_t color, int flags) {
   Font f = font_info(font);
-  int lh = font_line(font);
+  int lh = font_line(font) - (flags & GFX_TIGHT ? 1 : 0);
   char line[160];
+  bool draw = !(flags & GFX_MEASURE);
+  flags &= ~(GFX_MEASURE | GFX_TIGHT);
   while (*s) {
     /* as many words as fit */
     int n = 0, best = 0, w = 0;
@@ -511,7 +513,7 @@ int gfx_paragraph(int font, int x, int y, int width, const char *s, uint16_t col
     if (best > (int)sizeof line - 1) best = (int)sizeof line - 1;
     memcpy(line, s, (size_t)best);
     line[best] = 0;
-    gfx_text(font, x, y, gfx_fmt("%s", line), color, flags | GFX_CENTER);
+    if (draw) gfx_text(font, x, y, gfx_fmt("%s", line), color, flags | GFX_CENTER);
     s += best;
     while (*s == ' ') s++;
     if (*s == '\n') s++;
