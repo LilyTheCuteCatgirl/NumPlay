@@ -351,6 +351,56 @@ def direct_rows(rows, at, pool):
     return bytes(lens + ops)
 
 
+# CELESTE_DIRECT_OPTIMAL_ROW_RLE_V1: shortest existing RLE instructions, no decoder changes.
+def _celeste_optimal_direct_row(row, nib):
+    end = len(row)
+    while end and row[end - 1] == 0:
+        end -= 1
+    dp = [10**9] * (end + 1)
+    choice = [None] * end
+    dp[end] = 0
+    for i in range(end - 1, -1, -1):
+        v = int(row[i])
+        best = (10**9, None)
+        if v == 0:
+            n = 0
+            while n < 64 and i + n < end and row[i + n] == 0:
+                n += 1
+                q = 1 + dp[i + n]
+                if q < best[0]:
+                    best = (q, (0, n))
+        else:
+            n = 0
+            while n < 64 and i + n < end and row[i + n] == v:
+                n += 1
+                q = 2 + dp[i + n]
+                if q < best[0]:
+                    best = (q, (1, n))
+            n = 0
+            while n < 128 and i + n < end and row[i + n] != 0:
+                n += 1
+                q = 1 + ((n + 1) // 2 if nib else n) + dp[i + n]
+                if q < best[0]:
+                    best = (q, (2, n))
+        dp[i], choice[i] = best
+    out = bytearray()
+    i = 0
+    while i < end:
+        kind, n = choice[i]
+        if kind == 0:
+            out.append(n - 1)
+        elif kind == 1:
+            out += bytes((0x40 + n - 1, int(row[i])))
+        else:
+            out.append(0x80 + n - 1)
+            if nib:
+                for j in range(0, n, 2):
+                    out.append(int(row[i + j]) | (int(row[i + j + 1]) << 4 if j + 1 < n else 0))
+            else:
+                out += bytes(row[i:i + n])
+        i += n
+    return bytes(out)
+
 def rle_direct_rows(idx):
     """rle_direct_parts' (format flags, local palette, ops of each row)."""
     flat = idx.ravel()
@@ -413,6 +463,7 @@ def rle_direct_rows(idx):
         flags |= 8
         colors = bytes([len(uniq)] + uniq)
     if all(len(r) < ROW8_MAX for r in rows):
+        rows = [_celeste_optimal_direct_row(idx[y], nib) for y in range(h)]
         flags |= 4
     return flags, colors, rows
 
