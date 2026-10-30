@@ -245,6 +245,45 @@ def picture(im, ppm, pivot, opaque=False, colors=256):
     return out
 
 
+# HC_LOSSLESS_CROP_V1: compact only transparent margins; terrain stays direct.
+def _hc_crop_picture_blob(blob, name):
+    if name.startswith(('GROUND_', 'SURF_', 'PIT_', 'SKY', 'DIRT',
+                        'SNOW', 'GRASS', 'SLIME', 'FIRE')):
+        return blob
+    w, h, n, flags, ppm4, px4, py4, pad = struct.unpack_from('<HHHHHhhH', blob)
+    if flags or pad or not w or not h or n > 256:
+        return blob
+    pal = blob[16:16 + 4*n]
+    clear = [i for i in range(n) if pal[i*4 + 3] == 0]
+    if not clear or any(pal[i*4:i*4+3] != b'\0\0\0' for i in clear):
+        return blob
+    visible = {i for i in range(n) if pal[i*4+3] != 0}
+    px = blob[16+4*n:16+4*n+w*h]
+    if len(px) != w*h:
+        raise ValueError('Hill Climb image pixel data truncated')
+    x0, y0, x1, y1 = w, h, -1, -1
+    for y in range(h):
+        row = px[y*w:(y+1)*w]
+        for x, idx in enumerate(row):
+            if idx in visible:
+                x0 = min(x0, x); y0 = min(y0, y)
+                x1 = max(x1, x); y1 = max(y1, y)
+    if x1 < x0:
+        return blob
+    cw, ch = x1-x0+1, y1-y0+1
+    if max(x0, y0, cw, ch) > 255:
+        return blob
+    hdr = bytearray(blob[:16])
+    struct.pack_into('<H', hdr, 6, flags | 2)
+    struct.pack_into('<H', hdr, 14, clear[0])
+    out = hdr + pal + bytes((x0, y0, cw, ch))
+    for y in range(y0, y0+ch):
+        out += px[y*w+x0:y*w+x0+cw]
+    while len(out) % 4:
+        out.append(0)
+    return out if len(out) < len(blob) else blob
+
+
 def sized(im, how, crop):
     if crop == "trim":
         im = im.crop(im.getbbox())
@@ -442,7 +481,8 @@ def main():
             colors[name] = more[0]
     vp, art_lines = vehicle_pictures(ref)
     pics += vp
-    blobs = [picture(im, ppm, pv, opaque, colors.get(name, 256)) for name, im, ppm, pv, opaque in pics]
+    blobs = [_hc_crop_picture_blob(picture(im, ppm, pv, opaque, colors.get(name, 256)), name)
+             for name, im, ppm, pv, opaque in pics]
     ttf = os.path.join(ref, "fonts", "Teko.ttf")
     fonts = [font_data(ttf, cap, wt, ol) for _, cap, wt, ol in FONTS]
     head = 16 + 4 * (len(blobs) + len(fonts))

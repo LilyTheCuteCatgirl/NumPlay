@@ -316,6 +316,78 @@ __attribute__((noinline)) static void paint_image(const Cmd *k, int y0, int y1) 
   }
 }
 
+/* HC_LOSSLESS_CROP_V1: separate pixel path for cropped images. */
+__attribute__((noinline)) static void paint_image_cropped(const Cmd *k, int y0, int y1) {
+  const Img *im = k->image.im;
+  const uint32_t *pal = img_pal(im);
+  const uint8_t *px = img_px(im);
+  int w = im->w, h = im->h;
+  int32_t umax = (w - 1) << 16, vmax = (h - 1) << 16;
+  uint32_t ga = k->alpha;
+  for (int y = y0; y < y1; y++) {
+    int32_t ur = k->image.u0 + k->image.ub * y, vr = k->image.v0 + k->image.vb * y;
+    int x0 = k->x0, x1 = k->x1;
+    span(ur, k->image.ua, 0, umax, &x0, &x1);
+    span(vr, k->image.va, 0, vmax, &x0, &x1);
+    if (x0 >= x1) continue;
+    int32_t u = ur + k->image.ua * x0, v = vr + k->image.va * x0;
+    uint16_t *p = band + (y - by0) * SCREEN_W + x0;
+    for (int x = x0; x < x1; x++, p++, u += k->image.ua, v += k->image.va) {
+      int iu = u >> 16, iv = v >> 16;
+      if ((unsigned)iu > (unsigned)(w - 1) || (unsigned)iv > (unsigned)(h - 1)) continue;   /* (rounding at the ends) */
+      int iu1 = iu < w - 1 ? iu + 1 : iu, iv1 = iv < h - 1 ? w : 0;
+      uint32_t c00 = pal[img_crop_index(im, px, iu, iv)];
+      uint32_t c01 = pal[img_crop_index(im, px, iu1, iv)];
+      uint32_t c10 = pal[img_crop_index(im, px, iu, iv + (iv1 ? 1 : 0))];
+      uint32_t c11 = pal[img_crop_index(im, px, iu1, iv + (iv1 ? 1 : 0))];
+      if (!((c00 | c01 | c10 | c11) >> 24)) continue;   /* (all four see-through) */
+      uint32_t fu = (u >> 12) & 15, fv = (v >> 12) & 15;
+      uint32_t w11 = fu * fv, w01 = fu * (16 - fv), w10 = (16 - fu) * fv, w00 = 256 - w11 - w01 - w10;
+      uint32_t rb = ((c00 & 0xFF00FF) * w00 + (c01 & 0xFF00FF) * w01 + (c10 & 0xFF00FF) * w10 + (c11 & 0xFF00FF) * w11) >> 8;
+      uint32_t ag = (((c00 >> 8) & 0xFF00FF) * w00 + ((c01 >> 8) & 0xFF00FF) * w01 + ((c10 >> 8) & 0xFF00FF) * w10 +
+                     ((c11 >> 8) & 0xFF00FF) * w11) >> 8;
+      if (ga < 255) rb = (rb & 0xFF00FF) * ga >> 8, ag = (ag & 0xFF00FF) * ga >> 8;
+      uint32_t a = (ag >> 16) & 255;
+      if (a < 3) continue;
+      over(p, rb & 255, ag & 255, (rb >> 16) & 255, a);
+    }
+  }
+}
+
+__attribute__((noinline)) static void paint_blit_cropped(const Cmd *k, int y0, int y1) {
+  const Img *im = k->blit.im;
+  const uint32_t *pal = img_pal(im);
+  const uint8_t *px = img_px(im);
+  uint32_t ga = k->alpha;
+  int x0 = k->x0, x1 = k->x1;
+  /* HC_LOSSLESS_CROP_V1: transparent margins need no blit work. */
+  const uint8_t *crop = img_crop(im);
+  if (x0 < k->blit.x + crop[0]) x0 = k->blit.x + crop[0];
+  if (x1 > k->blit.x + crop[0] + crop[2]) x1 = k->blit.x + crop[0] + crop[2];
+  if (y0 < k->blit.y + crop[1]) y0 = k->blit.y + crop[1];
+  if (y1 > k->blit.y + crop[1] + crop[3]) y1 = k->blit.y + crop[1] + crop[3];
+  if (x0 >= x1 || y0 >= y1) return;
+  bool solid = im->flags & IMG_OPAQUE && ga == 255;
+  const uint16_t *pal565 = solid ? img_pal565(im) : NULL;
+  for (int y = y0; y < y1; y++) {
+    const uint8_t *src = px + (y - k->blit.y - crop[1]) * crop[2];
+    uint16_t *p = band + (y - by0) * SCREEN_W;
+    if (solid) {
+      for (int x = x0; x < x1; x++) p[x] = pal565[src[x - k->blit.x - crop[0]]];
+      continue;
+    }
+    for (int x = x0; x < x1; x++) {
+      uint32_t c = pal[src[x - k->blit.x - crop[0]]], a = c >> 24;
+      if (!a) continue;
+      if (ga < 255) {
+        uint32_t rb = (c & 0xFF00FF) * ga >> 8, g = ((c >> 8) & 0xFF00FF) * ga >> 8;
+        c = (rb & 0xFF00FF) | (g & 0xFF00FF) << 8, a = c >> 24;
+      }
+      over(p + x, c & 255, (c >> 8) & 255, (c >> 16) & 255, a);
+    }
+  }
+}
+
 __attribute__((noinline)) static void paint_blit(const Cmd *k, int y0, int y1) {
   const Img *im = k->blit.im;
   const uint32_t *pal = img_pal(im);
@@ -493,8 +565,10 @@ void gfx_end(void) {
         case C_RRECT: paint_rrect(k, y0, y1); break;
         case C_VGRAD: paint_vgrad(k, y0, y1); break;
         case C_ROWS: paint_rows(k, y0, y1); break;
-        case C_IMAGE: paint_image(k, y0, y1); break;
-        case C_BLIT: paint_blit(k, y0, y1); break;
+        case C_IMAGE: if (k->image.im->flags & IMG_CROPPED) paint_image_cropped(k, y0, y1);
+                      else paint_image(k, y0, y1); break;
+        case C_BLIT: if (k->blit.im->flags & IMG_CROPPED) paint_blit_cropped(k, y0, y1);
+                     else paint_blit(k, y0, y1); break;
         case C_TEXT: paint_text(k, y0, y1); break;
         case C_CIRCLE: paint_circle(k, y0, y1, false); break;
         case C_RING: paint_circle(k, y0, y1, true); break;
