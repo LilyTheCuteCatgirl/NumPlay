@@ -402,6 +402,162 @@ static int stations_test(void) {
   return station_fails ? 1 : 0;
 }
 
+/* the Snail Shaman (Mason363/NumPlay#245), played in his temple from a new game: in by its left gate, his talk, his
+ * spell summoned and taken (the Knight up again behind the bone gate), his talk through it; the Elder Baldur killed by
+ * Vengeful Spirit, his talk opening the gate; saved and loaded, the gate still open, the Baldur still gone. Then as #245
+ * had it: the Baldur killed, the game saved and loaded before the Shaman is told, his talk then; the lifeblood cocoon
+ * broken there before, broken still after the load and a rest at his bench, whole again after a rest at another (the
+ * Knight put by the Baldur and the cocoon: the climbs are not what is checked) */
+static int shaman_fails;
+static void shaman_check(bool ok, const char *what) {
+  printf("%s shaman: %s (shaman %d, fireball %d, in %s at %.2f,%.2f)\n", ok ? "ok  " : "FAIL", what, g_pd.shaman,
+         g_pd.fireball_level, room_name(g_room.id), g_hero.body.x, g_hero.body.y);
+  shaman_fails += !ok;
+}
+static bool hero_free(void) {
+  const Hero *h = &g_hero;
+  return h->accepting_input && !h->control_relinquished && h->state != HS_NO_INPUT && !dialogue_box_shown();
+}
+static void walk_to(float x) {
+  for (int t = 0; t < 600 && fabsf(g_hero.body.x - x) > 0.2f; t++) run_ticks(1, g_hero.body.x < x ? K_RIGHT : K_LEFT);
+  run_ticks(30, 0);
+}
+static void put_at(float x, float y) {
+  g_hero.body.x = x, g_hero.body.y = y, g_hero.body.vx = g_hero.body.vy = 0;
+  run_ticks(60, 0);
+}
+/* (Up, then OK on each page while his box is up: true once it came up and went, the Knight free again) */
+static bool shaman_talk(void) {
+  run_ticks(3, K_UP);
+  bool shown = false;
+  for (int t = 0; t < 4000; t += 40) {
+    run_ticks(40, 0);
+    shown |= dialogue_box_shown();
+    if (shown && hero_free()) return true;
+    if (dialogue_box_shown()) run_ticks(2, K_OK | K_JUMP);
+  }
+  return false;
+}
+static const Ent *temple_ent(int kind, int a) {
+  int n;
+  const Ent *es = room_ents(&n);
+  for (int i = 0; i < n; i++)
+    if (es[i].type == ENT_OBJ && es[i].flags == kind && (a < 0 || es[i].a == a)) return &es[i];
+  return NULL;
+}
+static bool gate_shut(void) { return phys_ray(44, 8.6f, -1, 0, 4, CF_SOLID, NULL); }   /* (the bone gate, at 42.4) */
+/* (by the Elder Baldur, on its right, Vengeful Spirit cast at it (the soul given) until the Shaman hears of it) */
+static void kill_baldur(void) {
+  put_at(64, 21.5f);
+  run_ticks(2, K_LEFT);
+  for (int k = 0; k < 12 && g_pd.shaman != 4 && g_pd.shaman != 5; k++) {
+    g_pd.mp = 33;
+    run_ticks(3, K_FOCUS | K_SPELL);
+    run_ticks(60, 0);
+  }
+  run_ticks(100, 0);
+}
+static bool baldur_gone(void) {
+  /* (dead in the save; its block off: the Knight walks on past where it was) */
+  const Ent *b = temple_ent(OK_ENEMY, EK_ELDERBALDUR);
+  put_at(58, 21.5f);
+  walk_to(47.5f);
+  return b && persist_get(b->persist) && g_hero.body.x < 48.5f;
+}
+static bool rest_at(int room, float x, float y) {
+  game_enter(room, x, y, true);
+  run_ticks(60, 0);
+  run_ticks(3, K_UP);
+  run_ticks(150, 0);
+  bool rested = pd_flag(PDF_AT_BENCH);
+  run_ticks(3, K_RIGHT);
+  run_ticks(60, 0);
+  return rested;
+}
+static int shaman_test(void) {
+  if (getenv("HKSAVES")) {
+    extern void host_save_dir(const char *d);
+    host_save_dir(getenv("HKSAVES"));
+  }
+  shielded = true;
+  game_new();
+  save_select(SAVE_SLOTS - 1);
+  game_enter_gate(ROOM_CROSSROADS_SHAMANTEMPLE, "left1");
+  run_ticks(100, 0);
+  walk_to(21.8f);
+  shaman_check(shaman_talk() && g_pd.shaman == 1, "met, his spell summoned");
+  /* (the spell: under it, a jump; its message, dismissed; the Knight gets up) */
+  walk_to(19.5f);
+  run_ticks(20, K_JUMP);
+  for (int t = 0; t < 2000 && !msg_shown(); t++) run_ticks(1, 0);
+  run_ticks(400, 0);
+  run_ticks(2, K_JUMP);
+  for (int t = 0; t < 40 && !(g_pd.shaman == 2 && hero_free()); t++) {
+    run_ticks(50, 0);
+    run_ticks(3, K_RIGHT);
+  }
+  shaman_check(g_pd.fireball_level == 1 && g_pd.shaman == 2 && hero_free() && g_hero.body.x > 43,
+               "Vengeful Spirit taken, the Knight up behind the gate");
+  walk_to(43.2f);
+  shaman_check(shaman_talk() && g_pd.shaman == 3 && gate_shut(), "his talk through the gate");
+  save_game();   /* (kept for #245's way, below) */
+  kill_baldur();
+  shaman_check(g_pd.shaman == 4, "the Elder Baldur killed, the Shaman told");
+  put_at(46, 8.5f);
+  walk_to(43.2f);
+  shaman_check(shaman_talk() && g_pd.shaman == 6 && !gate_shut(), "his talk, the gate opened");
+  walk_to(38);
+  shaman_check(g_hero.body.x < 40, "through the gate");
+  save_select(SAVE_SLOTS - 2);
+  save_game();
+  game_new();
+  shaman_check(save_load(SAVE_SLOTS - 2) && game_respawn(), "saved, a new game, loaded");
+  run_ticks(200, 0);
+  shaman_check(g_room.id == ROOM_CROSSROADS_SHAMANTEMPLE && g_pd.shaman == 6 && !gate_shut(), "loaded: the gate open");
+  walk_to(21.8f);   /* (back where he was met, once the gate is open) */
+  shaman_check(shaman_talk() && g_pd.shaman == 6 && !gate_shut(), "loaded: his talk where he was met");
+  shaman_check(baldur_gone(), "loaded: the Elder Baldur gone");
+  /* (#245's way: the save before the Baldur loaded; the cocoon broken; the Baldur killed; saved and loaded) */
+  game_new();
+  save_select(SAVE_SLOTS - 1);
+  shaman_check(save_load(SAVE_SLOTS - 1) && game_respawn() && g_pd.shaman == 3, "the save before the Baldur loaded");
+  run_ticks(200, 0);
+  const Ent *cocoon = temple_ent(OK_COCOON, -1);
+  put_at(38.5f, 46.5f);
+  run_ticks(3, K_UP | K_ATTACK);
+  run_ticks(100, 0);
+  shaman_check(cocoon && persist_get(cocoon->persist), "the lifeblood cocoon broken");
+  kill_baldur();
+  shaman_check(g_pd.shaman == 4, "the Elder Baldur killed again");
+  save_game();
+  game_new();
+  shaman_check(save_load(SAVE_SLOTS - 1) && game_respawn(), "saved, a new game, loaded");
+  run_ticks(200, 0);
+  shaman_check(g_pd.shaman == 4 && gate_shut() && persist_get(cocoon->persist), "loaded: the gate shut, the cocoon broken");
+  walk_to(43.2f);
+  shaman_check(shaman_talk() && g_pd.shaman == 6 && !gate_shut(), "loaded: his talk, the gate opened");
+  shaman_check(baldur_gone(), "loaded: the Elder Baldur gone");
+  /* (his bench, beyond the gate: the cocoon in its room stays broken; another's: whole again) */
+  shaman_check(rest_at(ROOM_CROSSROADS_SHAMANTEMPLE, 15.09f, 8) && persist_get(cocoon->persist),
+               "rested at his bench: the cocoon broken still");
+  shaman_check(rest_at(ROOM_CROSSROADS_47, 29.34f, 7) && !persist_get(cocoon->persist),
+               "rested at another bench: the cocoon whole again");
+  /* (broken again, saved away from a bench (as Home does) and loaded at that bench: whole again, Init Resting's) */
+  game_enter(ROOM_CROSSROADS_SHAMANTEMPLE, 38.5f, 46.5f, true);
+  run_ticks(60, 0);
+  run_ticks(3, K_UP | K_ATTACK);
+  run_ticks(100, 0);
+  bool broken = persist_get(cocoon->persist);
+  save_game();
+  game_new();
+  shaman_check(broken && save_load(SAVE_SLOTS - 1) && game_respawn(), "broken again, saved, a new game, loaded");
+  run_ticks(200, 0);
+  shaman_check(g_room.id == ROOM_CROSSROADS_47 && !persist_get(cocoon->persist), "loaded at that bench: the cocoon whole");
+  shielded = false;
+  printf("shaman: %d failing\n", shaman_fails);
+  return shaman_fails ? 1 : 0;
+}
+
 /* the ground's seams, as the calculator rounds: from many places in every room the Knight lands on the ground, then is
  * put a few float steps lower (as near as rounding leaves him), and must walk both ways where no wall stops him; and
  * jumping at a wall, put a few steps nearer it, he must fall back down, not hang on it */
@@ -662,6 +818,43 @@ static int texts_test(void) {
   return text_fails ? 1 : 0;
 }
 
+/* each shop's first charm: bought (each row from the top, as bought until one is a charm), its lesson up as the shop
+ * closes, then sent away by a key once it stops, the Knight's control given back (a shop's lesson: Input) */
+static int shop_charm_test(void) {
+  static const struct { const char *room; float x; const char *flags; } shops[] = {
+      {"Room_mapper", 17.35f, "123,149"}, {"Room_shop", 15.6f, "23,122"}, {"Room_Charm_Shop", 17.14f, "124"}};
+  int fails = 0;
+  shielded = true;
+  for (unsigned k = 0; k < sizeof shops / sizeof shops[0]; k++) {
+    text_room(shops[k].room, shops[k].x, 6.5f, shops[k].flags);
+    run_ticks(80, 0);
+    bool lesson = false;
+    for (int row = 0; row < 12 && !pd_flag(PDF_HAS_CHARM); row++) {
+      for (int t = 0; t < 30 && !hero_free(); t++) run_ticks(50, 0);   /* (the shop down, or what it gave) */
+      run_ticks(3, K_UP);
+      run_ticks(150, 0);
+      for (int i = 0; i < 8 && !shop_open(); i++) run_ticks(2, K_OK | K_JUMP), run_ticks(60, 0);   /* (its talk first) */
+      for (int i = 0; i < row; i++) run_ticks(2, K_DOWN), run_ticks(20, 0);
+      run_ticks(2, K_OK), run_ticks(40, 0);
+      run_ticks(2, K_OK), run_ticks(150, 0);
+      if (pd_flag(PDF_HAS_CHARM)) lesson = !shop_open() && !hero_free();
+      if (shop_open()) run_ticks(2, K_BACK), run_ticks(60, 0), run_ticks(2, K_BACK), run_ticks(60, 0);
+    }
+    run_ticks(300, 0);   /* (its stop, 5 s after it came up) */
+    bool waits = !hero_free();
+    run_ticks(2, K_JUMP);
+    run_ticks(100, 0);
+    bool ok = pd_flag(PDF_HAS_CHARM) && lesson && waits && hero_free();
+    printf("%s shop charm: %s: %s\n", ok ? "ok  " : "FAIL", shops[k].room,
+           !pd_flag(PDF_HAS_CHARM) ? "no charm bought" : !lesson ? "no lesson" : !waits ? "the lesson gone by itself"
+           : !hero_free() ? "the Knight without control after it" : "bought, the lesson sent away, the Knight free");
+    fails += !ok;
+  }
+  shielded = false;
+  printf("shop charm: %d failing\n", fails);
+  return fails ? 1 : 0;
+}
+
 /* the way to the False Knight (Mason363/NumPlay#172), played as one game, room by room, each room's keys from when the
  * Knight comes into it: from the new game's fall into King's Pass, through Dirtmouth and down its well, past the Temple of
  * the Black Egg, down through the tollbooth into Crossroads_03 (its lever's gates open: the game's Knight opens them from
@@ -790,6 +983,8 @@ static int gates_test(const char *which) {
   if (!strcmp(which, "arenas")) return arenas_test();
   if (!strcmp(which, "charms")) return charms_test();
   if (!strcmp(which, "stations")) return stations_test();
+  if (!strcmp(which, "shaman")) return shaman_test();
+  if (!strcmp(which, "shopcharm")) return shop_charm_test();
   if (!strncmp(which, "wander:", 7)) {   /* (wander:ROOM|all:seed:ticks) */
     char room[64];
     int seed = 1, ticks = 6000;
@@ -1001,6 +1196,7 @@ int main(int argc, char **argv) {
     if (getenv("HKHORNETGP")) g_pd.hornet_greenpath = (uint8_t)atoi(getenv("HKHORNETGP"));
     if (getenv("HKDASH")) g_pd.has_dash = true;
     if (getenv("HKMENDERSTATE")) g_pd.mender_state = (uint8_t)atoi(getenv("HKMENDERSTATE"));
+    if (getenv("HKSHAMAN")) g_pd.shaman = (uint8_t)atoi(getenv("HKSHAMAN"));
     if (getenv("HKMAPPED")) memset(g_pd.rooms_mapped, 0xFF, sizeof g_pd.rooms_mapped);   /* (every room mapped) */
     if (getenv("HKTRINKETS"))   /* (relics: "1,2,0,0") */
       sscanf(getenv("HKTRINKETS"), "%hhu,%hhu,%hhu,%hhu", &g_pd.trinkets[0], &g_pd.trinkets[1], &g_pd.trinkets[2], &g_pd.trinkets[3]);
@@ -1139,10 +1335,10 @@ int main(int argc, char **argv) {
       int np = 0;
       for (int i = 0; i < MAX_PERSIST; i++) np += persist_get(i);
       printf(" hornet_greenpath %d trinkets %d %d %d %d charms %d saved %d health %d+%d mp %d geo %d grubs %d"
-             " max %d pieces %d %d reserve %d\n", g_pd.hornet_greenpath,
+             " max %d pieces %d %d reserve %d shaman %d fireball %d\n", g_pd.hornet_greenpath,
              g_pd.trinkets[0], g_pd.trinkets[1], g_pd.trinkets[2], g_pd.trinkets[3], g_pd.charms_owned, np, g_pd.health,
              g_pd.health_blue, g_pd.mp, (int)g_pd.geo, g_pd.grubs_collected, g_pd.max_health, g_pd.heart_pieces,
-             g_pd.vessel_fragments, g_pd.mp_reserve_max);
+             g_pd.vessel_fragments, g_pd.mp_reserve_max, g_pd.shaman, g_pd.fireball_level);
     }
     return 0;
   }
