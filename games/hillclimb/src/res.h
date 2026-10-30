@@ -10,7 +10,7 @@ typedef struct {
   int16_t px4, py4;                /* its pivot x 4 */
   uint16_t pad;         /* if cropped, original clear palette index */
 } Img;
-enum { IMG_OPAQUE = 1, IMG_CROPPED = 2 };
+enum { IMG_OPAQUE = 1, IMG_CROPPED = 2, IMG_TILED = 4 };
 
 typedef struct {
   uint8_t w, h;
@@ -41,6 +41,34 @@ static inline uint8_t img_crop_index(const Img *i, const uint8_t *px, int x, int
   if (xx >= c[2] || yy >= c[3]) return (uint8_t)i->pad;
   return px[yy * c[2] + xx];
 }
+/* HC_MENU_TILES_EXPERIMENT_V1: direct-access 8x8 local palette image indices.
+ * No allocation. Only used for menu-only IMG_TILED records. */
+static inline uint8_t img_tile_index(const Img *i, const uint8_t *px, int x, int y) {
+  unsigned w = i->w, h = i->h;
+  if (i->flags & IMG_CROPPED) {
+    const uint8_t *c = img_crop(i);
+    unsigned xx = (unsigned)(x - c[0]), yy = (unsigned)(y - c[1]);
+    if (xx >= c[2] || yy >= c[3]) return (uint8_t)i->pad;
+    x = (int)xx; y = (int)yy; w = c[2]; h = c[3];
+  }
+  unsigned cols = (w + 7) >> 3, rows = (h + 7) >> 3;
+  unsigned ti = ((unsigned)y >> 3) * cols + ((unsigned)x >> 3);
+  const uint8_t *payload = px + 2 * cols * rows;
+  unsigned off = px[2 * ti] | ((unsigned)px[2 * ti + 1] << 8);
+  const uint8_t *t = payload + off;
+  unsigned n = *t++;
+  unsigned tw = w - ((unsigned)x & ~7u);
+  if (tw > 8) tw = 8;
+  unsigned pos = ((unsigned)y & 7u) * tw + ((unsigned)x & 7u);
+  if (!n) return t[pos];
+  if (n == 1) return t[0];
+  unsigned bits = n == 2 ? 1 : n <= 4 ? 2 : 4;
+  const uint8_t *indices = t + n;
+  unsigned bit = pos * bits;
+  unsigned v = (indices[bit >> 3] >> (8 - bits - (bit & 7u))) & ((1u << bits) - 1u);
+  return t[v];
+}
+
 const Font *font(int id);
 static inline const Glyph *font_glyphs(const Font *f) { return (const Glyph *)(const void *)(f + 1); }
 static inline const uint8_t *font_bits(const Font *f) { return (const uint8_t *)(font_glyphs(f) + f->count); }

@@ -326,6 +326,55 @@ def _hc_compact_palette_blob(blob):
     out += bytes((-len(out)) % 4)
     return bytes(out) if len(out) < len(blob) else bytes(blob)
 
+# HC_MENU_TILES_EXPERIMENT_V1: lossless local-palette 8x8 menu images (16-bit tile offsets).
+def _hc_menu_tile_blob(blob, name):
+    if not (name in {'MENU_BG', 'LOGO', 'LOCK', 'START'} or
+            name.startswith(('STAGE_', 'ICON_', 'UP_', 'THUMB_V', 'THUMB_S'))):
+        return blob
+    w, h, n, flags, _, _, _, _ = struct.unpack_from('<HHHHHhhH', blob)
+    if flags & 4:
+        raise ValueError('tile encoding applied twice')
+    p = 16 + n*4 + (2*n if flags&1 else 0)
+    if flags&2:
+        cx, cy, cw, ch=blob[p:p+4]
+        p+=4
+    else:
+        cw, ch=w,h
+    pixels=blob[p:p+cw*ch]
+    if len(pixels)!=cw*ch:
+        raise ValueError('truncated input for menu tiling')
+    cols=(cw+7)//8;rows=(ch+7)//8
+    offsets=[];tiles=[];length=0
+    for ty in range(rows):
+        for tx in range(cols):
+            tw=min(8,cw-8*tx);th=min(8,ch-8*ty)
+            raw=b''.join(pixels[(8*ty+dy)*cw+8*tx:(8*ty+dy)*cw+8*tx+tw] for dy in range(th))
+            cmap={}; pal=[]; codes=[]
+            for val in raw:
+                if val not in cmap:
+                    cmap[val]=len(pal);pal.append(val)
+                codes.append(cmap[val])
+            count=len(pal)
+            if count<=16:
+                bits=0 if count==1 else 1 if count==2 else 2 if count<=4 else 4
+                t=bytearray((count,))+bytearray(pal)
+                if bits:
+                    for k in range(0,len(codes),8//bits):
+                        v=0
+                        for j,c in enumerate(codes[k:k+8//bits]):
+                            v|=c<<(8-bits*(j+1))
+                        t.append(v)
+                if len(t)>=1+len(raw):t=b'\0'+raw
+            else:
+                t=b'\0'+raw
+            offsets.append(length);tiles.append(bytes(t));length+=len(t)
+    if length>=65536:return blob
+    data=b''.join(struct.pack('<H',o) for o in offsets)+b''.join(tiles)
+    out=bytearray(blob[:p])+data
+    struct.pack_into('<H',out,6,flags|4)
+    while len(out)%4:out.append(0)
+    return bytes(out) if len(blob)-len(out)>=96 and len(out)*100<=len(blob)*96 else blob
+
 def sized(im, how, crop):
     if crop == "trim":
         im = im.crop(im.getbbox())
@@ -581,7 +630,7 @@ def main():
             colors[name] = more[0]
     vp, art_lines = vehicle_pictures(ref)
     pics += vp
-    blobs = [_hc_compact_palette_blob(_hc_crop_picture_blob(picture(im, ppm, pv, opaque, colors.get(name, 256)), name))
+    blobs = [_hc_menu_tile_blob(_hc_compact_palette_blob(_hc_crop_picture_blob(picture(im, ppm, pv, opaque, colors.get(name, 256)), name)), name)
              for name, im, ppm, pv, opaque in pics]
     ttf = os.path.join(ref, "fonts", "Teko.ttf")
     fonts = [font_data(ttf, cap, wt, ol) for _, cap, wt, ol in FONTS]
