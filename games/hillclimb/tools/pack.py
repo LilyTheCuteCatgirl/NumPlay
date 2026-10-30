@@ -284,6 +284,48 @@ def _hc_crop_picture_blob(blob, name):
     return out if len(out) < len(blob) else blob
 
 
+# HC_PALETTE_COMPACT_V1: preserve exact premultiplied RGBA/RGB565.
+def _hc_compact_palette_blob(blob):
+    """Drop unused/duplicate colour entries in one already-cropped HCRD record.
+
+    Works on both ordinary and HC_LOSSLESS_CROP_V1 records; the latter's
+    outside-transparent index is remapped too. Never alters logical pixels.
+    """
+    w, h, n, flags, ppm4, px4, py4, pad = struct.unpack_from('<HHHHHhhH', blob)
+    assert flags & ~3 == 0 and 1 <= n <= 256
+    rgba = [blob[16 + 4*i:20 + 4*i] for i in range(n)]
+    pal_end = 16 + 4*n
+    rgb565 = [blob[pal_end + 2*i:pal_end + 2*i + 2] for i in range(n)] if flags & 1 else None
+    at = pal_end + (2*n if flags & 1 else 0)
+    if flags & 2:
+        x0, y0, cw, ch = blob[at:at + 4]
+        at += 4
+    else:
+        cw, ch = w, h
+    px = blob[at:at + cw*ch]
+    keep = set(px)
+    if flags & 2:
+        keep.add(pad)  # original transparent colour outside crop bounds
+    unique, remap, colors = {}, {}, []
+    for old in sorted(keep):
+        key = rgba[old] + (rgb565[old] if rgb565 is not None else b'')
+        if key not in unique:
+            unique[key] = len(colors)
+            colors.append(old)
+        remap[old] = unique[key]
+    hdr = bytearray(blob[:16])
+    struct.pack_into('<H', hdr, 4, len(colors))
+    if flags & 2:
+        struct.pack_into('<H', hdr, 14, remap[pad])
+    out = hdr + b''.join(rgba[i] for i in colors)
+    if rgb565 is not None:
+        out += b''.join(rgb565[i] for i in colors)
+    if flags & 2:
+        out += bytes((x0, y0, cw, ch))
+    out += bytes(remap[i] for i in px)
+    out += bytes((-len(out)) % 4)
+    return bytes(out) if len(out) < len(blob) else bytes(blob)
+
 def sized(im, how, crop):
     if crop == "trim":
         im = im.crop(im.getbbox())
@@ -481,7 +523,7 @@ def main():
             colors[name] = more[0]
     vp, art_lines = vehicle_pictures(ref)
     pics += vp
-    blobs = [_hc_crop_picture_blob(picture(im, ppm, pv, opaque, colors.get(name, 256)), name)
+    blobs = [_hc_compact_palette_blob(_hc_crop_picture_blob(picture(im, ppm, pv, opaque, colors.get(name, 256)), name))
              for name, im, ppm, pv, opaque in pics]
     ttf = os.path.join(ref, "fonts", "Teko.ttf")
     fonts = [font_data(ttf, cap, wt, ol) for _, cap, wt, ol in FONTS]
