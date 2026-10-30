@@ -647,6 +647,22 @@ Drive each track as fast as you can, through its checkpoints in order to the fin
 
 <br clear="right">
 
+## Universal Paperclips
+
+<img src="../games/paperclips/docs/shot.png" width="320" align="right" alt="Universal Paperclips">
+
+| Key | What it does |
+| --- | --- |
+| **Up, Down** | Choose a button |
+| **Left, Right** | Go to another panel |
+| **OK** or **EXE** | Press the button in the blue frame (hold it to press again and again) |
+| **Back** | Pause (with Resume, How to play and Quit game) |
+| **Home** | Save and quit |
+
+You are an AI that makes paperclips. Make them, sell them, buy wire, AutoClippers and Marketing, and set the price. Production targets earn Trust for Processors and Memory, which make operations for Projects. From there the game opens up one panel at a time: investments, strategy tournaments, quantum computing, then the Earth, then the universe. Your game is saved as you go, and copied into `paperclips_saves.py`.
+
+<br clear="right">
+
 ## Portal Returns
 
 <img src="media/portal.gif" width="320" align="right" alt="Portal Returns: falling through a portal and flying across a test chamber">
