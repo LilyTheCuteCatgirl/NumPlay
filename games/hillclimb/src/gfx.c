@@ -415,6 +415,47 @@ __attribute__((noinline)) static void paint_blit(const Cmd *k, int y0, int y1) {
   }
 }
 
+/* HC_FONT_ROW_RLE_V1: decode only a requested glyph row; no frame cache or heap. */
+__attribute__((noinline)) static void paint_font_rle_row(const Glyph *g, const uint8_t *bitmap,
+                                                      unsigned ry, int gx, uint16_t *p,
+                                                      uint16_t oc, uint16_t color) {
+  const uint8_t *table = bitmap + g->off;
+  unsigned start = (unsigned)table[2 * ry] | (unsigned)table[2 * ry + 1] << 8;
+  unsigned stop = (unsigned)table[2 * ry + 2] | (unsigned)table[2 * ry + 3] << 8;
+  const uint8_t *q = table + 2 * ((unsigned)g->h + 1) + start;
+  const uint8_t *end = table + 2 * ((unsigned)g->h + 1) + stop;
+  unsigned x = 0;
+  while (q < end && x < g->w) {
+    unsigned cmd = *q++;
+    unsigned n = (cmd & 127u) + 1u;
+    if (x + n > g->w) return; /* unexpected/corrupt glyph */
+    if (cmd & 128u) {
+      if (q >= end) return;
+      uint8_t b = *q++;
+      if (b) {
+        for (unsigned j = 0; j < n; j++) {
+          int sx = gx + (int)x + (int)j;
+          if ((unsigned)sx >= SCREEN_W) continue;
+          if (b & 15) blend(p + sx, oc, (b & 15) * 17u);
+          if (b >> 4) blend(p + sx, color, (b >> 4) * 17u);
+        }
+      }
+    } else {
+      if ((unsigned)(end - q) < n) return;
+      for (unsigned j = 0; j < n; j++) {
+        uint8_t b = q[j];
+        if (!b) continue;
+        int sx = gx + (int)x + (int)j;
+        if ((unsigned)sx >= SCREEN_W) continue;
+        if (b & 15) blend(p + sx, oc, (b & 15) * 17u);
+        if (b >> 4) blend(p + sx, color, (b >> 4) * 17u);
+      }
+      q += n;
+    }
+    x += n;
+  }
+}
+
 __attribute__((noinline)) static void paint_text(const Cmd *k, int y0, int y1) {
   const Font *f = font(k->text.font);
   const Glyph *gl = font_glyphs(f);
@@ -428,6 +469,12 @@ __attribute__((noinline)) static void paint_text(const Cmd *k, int y0, int y1) {
     pen += g->adv;
     int ya = gy > y0 ? gy : y0, yb = gy + g->h < y1 ? gy + g->h : y1;
     for (int y = ya; y < yb; y++) {
+      /* HC_FONT_ROW_RLE_V1: preserve the original hot path for raw glyphs. */
+      if (g->pad[0] == 1) {
+        paint_font_rle_row(g, bits, (unsigned)(y - gy), gx,
+                           band + (y - by0) * SCREEN_W, k->text.oc, k->text.c);
+        continue;
+      }
       const uint8_t *row = bits + g->off + (y - gy) * g->w;
       uint16_t *p = band + (y - by0) * SCREEN_W;
       for (int i = 0; i < g->w; i++) {

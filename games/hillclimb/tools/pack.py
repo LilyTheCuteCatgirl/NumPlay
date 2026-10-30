@@ -480,6 +480,64 @@ def font_data(ttf, cap, weight, outline):
     out += data
     while len(out) % 4:
         out.append(0)
+    return _hc_pack_font_blob(out)
+
+
+# HC_FONT_ROW_RLE_V1: lossless per-glyph row PackBits, direct row offsets.
+def _hc_rle_font_row(raw):
+    out = bytearray()
+    i = 0
+    while i < len(raw):
+        j = i + 1
+        while j < len(raw) and raw[j] == raw[i] and j - i < 128:
+            j += 1
+        if j - i >= 3:
+            out += bytes((0x80 | (j-i-1), raw[i]))
+            i = j
+            continue
+        start = i
+        i += j - i
+        while i < len(raw) and i - start < 128:
+            j = i + 1
+            while j < len(raw) and raw[j] == raw[i] and j - i < 128:
+                j += 1
+            if j - i >= 3:
+                break
+            i += min(j-i, 128-(i-start))
+        out.append(i-start-1)
+        out += raw[start:i]
+    return bytes(out)
+
+
+def _hc_pack_font_blob(blob):
+    """Existing font/glyph structs, except pad[0]=1 marks compressed glyphs.
+
+    Each compressed glyph payload starts with h+1 little-endian uint16 row
+    offsets, followed by the PackBits streams; other glyphs stay direct.
+    """
+    first, count, height, ascent = struct.unpack_from('<BBBB', blob)
+    base = 4 + 12*count
+    out = bytearray(blob[:base])
+    for j in range(count):
+        p = 4 + 12*j
+        w, h = struct.unpack_from('<BB', blob, p)
+        oldoff = struct.unpack_from('<I', blob, p+8)[0]
+        raw = bytes(blob[base+oldoff:base+oldoff+w*h])
+        assert len(raw) == w*h and not any(blob[p+5:p+8])
+        struct.pack_into('<I', out, p+8, len(out)-base)
+        if w and h:
+            rows = [_hc_rle_font_row(raw[y*w:(y+1)*w]) for y in range(h)]
+            starts = [0]
+            for row in rows:
+                starts.append(starts[-1] + len(row))
+            if starts[-1] <= 65535:
+                candidate = struct.pack('<'+'H'*(h+1), *starts) + b''.join(rows)
+                if len(candidate) < len(raw):
+                    out[p+5] = 1
+                    out += candidate
+                    continue
+        out += raw
+    out += bytes((-len(out)) % 4)
     return out
 
 
