@@ -929,8 +929,18 @@ static void draw_award(void) {
   }
   gfx_text(F_HEAD, 160, 22, head, rgb565(0xF2C94C), GFX_CENTER | GFX_OUTLINE);
   draw_reward(160, 82, true);
-  gfx_text(F_HEAD, 160, 152, name, rgb565(0x3A2410), GFX_CENTER);
-  gfx_paragraph(F_BODY, 160, 172, 200, text, rgb565(0x3A2410), 0);
+  /* the words in the card's panel, under the name: the body's letters if they fit, else the small ones, in its
+   * middle; the longest (the Potato Mine's, the trophy's) a little closer, the name a little higher */
+  int top = 154, bottom = 189, width = 114, font = F_BODY, tight = 0;
+  int h = gfx_paragraph(font, 160, 0, width, text, 0, GFX_MEASURE) - 1;
+  if (h > bottom - top) font = F_SMALL, h = gfx_paragraph(font, 160, 0, width, text, 0, GFX_MEASURE) - 1;
+  if (h > bottom - top) {
+    top = 152, width = 118, tight = GFX_TIGHT;
+    h = gfx_paragraph(font, 160, 0, width, text, 0, GFX_MEASURE | tight) - 1;
+  }
+  gfx_text(F_HEAD, 160, top - 2, name, rgb565(0x3A2410), GFX_CENTER);
+  int y = h < bottom - top ? top + (bottom - top - h) / 2 : top;
+  gfx_paragraph(font, 160, y + font_info(font).ascent, width, text, rgb565(0x3A2410), tight);
   draw_button(110, 214, 100, B.level == N_LEVELS ? "Main Menu" : "Next Level", true);
 }
 
@@ -1051,7 +1061,7 @@ static void draw_shop(void) {
 
 static void draw_help(void) {
   show_back(BG_ALMANAC);
-  gfx_text(F_BIG, 160, 34, "How to Play", rgb565(0x5A3A1E), GFX_CENTER);
+  gfx_text(F_BIG, 160, 25, "How to Play", rgb565(0x5A3A1E), GFX_CENTER);   /* (in the middle of the stone) */
   static const char *const keys[][2] = {
     {"Arrows", "Move over the lawn"},
     {"1 2 3 ... 0", "Pick a seed packet"},
