@@ -1038,6 +1038,28 @@ BLOB_BYTES = {}
 ROOM_POOL_FULL = 19092
 
 
+
+# CELESTE_DECAL_ZIGZAG_XY_V1: same-length, reversible decal x/y preconditioner.
+# Every room uses this transform; level.c undoes it once after room loading.
+def _cel_decals_zigzag_room(blob):
+    out = bytearray(blob)
+    for part in (3, 4):  # RB_DFG, RB_DBG
+        start = struct.unpack_from('<H', blob, 2 * part)[0]
+        n = struct.unpack_from('<H', blob, start)[0]
+        nt = blob[start + 2]
+        xat = start + 4 + 2 * nt
+        for at in (xat, xat + 2 * n):
+            previous = 0
+            for i in range(n):
+                value = struct.unpack_from('<H', blob, at + i * 2)[0]
+                delta = (value - previous) & 65535
+                signed = delta if delta < 32768 else delta - 65536
+                z = ((signed << 1) ^ (signed >> 15)) & 65535
+                struct.pack_into('<H', out, at + i * 2, z)
+                previous = value
+    return bytes(out)
+
+
 def room_blob(ch, r):
     """Everything a room needs; the first part (up to RB_ENTS) stays in RAM while the room is loaded
     (level.c room_load), the entities and triggers are read once."""
@@ -1152,7 +1174,8 @@ def room_blob(ch, r):
         name = ("fg", "bg", "extras", "dfg", "dbg", "spin", "need", "ents", "trigs")[k]
         BLOB_PARTS[name] += b - a
         BLOB_BYTES.setdefault(name, bytearray()).extend(w.b[a:b])
-    return bytes(w.b)
+    # CELESTE_DECAL_ZIGZAG_XY_V1: same raw room size and same offsets.
+    return _cel_decals_zigzag_room(bytes(w.b))
 
 
 def room_pool_size(chapters):
