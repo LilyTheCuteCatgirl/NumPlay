@@ -318,6 +318,13 @@ Read **[Make your own NumWorks game](docs/make-a-game.md)** to go from there, an
 - [ ] Mahjong
 - [ ] Universal Paperclips
 - [ ] OMORI
+- [ ] The Legend of Zelda: Ocarina of Time
+- [ ] Clash Royale, against bots
+- [ ] florr.io
+- [ ] Rider and Rider Worlds
+- [ ] Hollow Knight: Godhome, its boss fights in an app of their own
+- [ ] Animal Well
+- [ ] Rider.io
 
 ## Credits
 
