@@ -1,6 +1,7 @@
 /* Checks of the item rules: crafting, stacking, smelting, drops. */
 #include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
 #include <math.h>
 #include <unistd.h>
 #include "nb.h"
@@ -703,6 +704,40 @@ int main(void) {
     CHECK(opt.keys[A_ATTACK] == 5 && opt.keys[A_USE] == 4);
     keys_reset();
   }
+#if NB_DIMS
+  {
+    /* (issue #219) each stronghold's portal room whole, caves or not: its 12 frames and the lava under them,
+     * whichever rows of the chunks are made (the world's slabs of 24, from any height) */
+    static uint8_t slab[256 * 24], hi[256 * 24 / 8];
+    int rooms = 0, whole = 0;
+    for (int64_t seed = 1; seed <= 12; seed++) {
+      gen_init(seed);
+      for (int s = 0; s < 3; s++) {
+        int g[6] = {0};
+        if (!gen_stronghold_find(s, g)) continue;
+        for (int off = 0; off < 24; off += 11) {
+          int fr = 0, lava = 0;
+          for (int dz = -2; dz <= 2; dz++)
+            for (int dx = -2; dx <= 3; dx++) {
+              int x = g[2] + (dx < 3 ? dx : 0), y = dx < 3 ? g[3] : g[3] - 2, z = g[4] + (dx < 3 ? dz : 0);
+              int y0 = y - off, h = 24;
+              if (y0 < 0) h += y0, y0 = 0;
+              memset(hi, 0, sizeof hi);
+              gen_hi = hi;
+              gen_slab(x >> 4, z >> 4, y0, h, slab);
+              gen_hi = NULL;
+              int c = (y - y0) * 256 + (z & 15) * 16 + (x & 15), b = slab[c] | (hi[c >> 3] >> (c & 7) & 1) << 8;
+              if (dx < 3) fr += b == B_END_PORTAL_FRAME || b == B_END_PORTAL_FRAME_EYE;
+              else lava += dz == 0 && b == B_LAVA;
+            }
+          rooms++, whole += fr == 12 && lava == 1;
+        }
+      }
+    }
+    printf("strongholds: %d of %d portal rooms whole\n", whole, rooms);
+    CHECK(rooms == 12 * 3 * 3 && whole == rooms);
+  }
+#endif
   printf("%s (%d recipes)\n", fails ? "FAILED" : "all good", N_RECIPES);
   return fails != 0;
 }
