@@ -94,9 +94,34 @@ class W:
         return len(self.b)
 
 
+# CELESTE_LZMA_ENCODER_PICK_V1: choose the smallest aligned LZMA1 RAW stream.
+# The game decoder still uses exactly dict=9600, lc=lp=pb=0; generation-only CPU.
 def lz(data):
-    return lzma.compress(bytes(data), format=lzma.FORMAT_RAW, filters=[
-        {"id": lzma.FILTER_LZMA1, "preset": 9 | lzma.PRESET_EXTREME, "lc": 0, "lp": 0, "pb": 0, "dict_size": DICT}])
+    src = bytes(data)
+    base = {"id": lzma.FILTER_LZMA1, "preset": 9 | lzma.PRESET_EXTREME,
+            "lc": 0, "lp": 0, "pb": 0, "dict_size": DICT}
+    best = lzma.compress(src, format=lzma.FORMAT_RAW, filters=[base])
+    best_aligned = (len(best) + 3) & ~3
+    trials = (
+        {"preset": 9},
+        {"preset": 8 | lzma.PRESET_EXTREME},
+        {"preset": 7 | lzma.PRESET_EXTREME},
+        {"nice_len": 64},
+        {"nice_len": 128},
+        {"nice_len": 192},
+        {"mf": lzma.MF_BT3},
+        {"mf": lzma.MF_HC4},
+        {"depth": 16},
+        {"depth": 32},
+    )
+    for option in trials:
+        params = dict(base)
+        params.update(option)
+        encoded = lzma.compress(src, format=lzma.FORMAT_RAW, filters=[params])
+        aligned = (len(encoded) + 3) & ~3
+        if aligned < best_aligned:
+            best, best_aligned = encoded, aligned
+    return best
 
 
 class Strings:
@@ -1734,6 +1759,95 @@ def packed_body(t):
     return bytes([len(uniq)] + uniq) + lut[t.idx].tobytes()
 
 
+# CELESTE_PALETTE_PACK_SELECT_V1: improve LZMA packing without changing on-device code.
+# Reorder local palette entries and indices together. Only whole-pack winners
+# are kept; a pack's raw length and every texture offset remain unchanged.
+def _cel_pal_reorder_pack(raw, entries, mode):
+    source = bytes(raw)
+    output = bytearray(source)
+    changed = 0
+    for at, expected_pixels in entries:
+        if at < 0 or at + 20 > len(source):
+            raise ValueError("texture record outside raw pack")
+        if source[at+14] != 8:   # no local palette: normal packed or raw tile sheet
+            continue
+        w, h = struct.unpack_from("<HH", source, at)
+        n = w * h
+        if not w or not h or n != expected_pixels:
+            raise ValueError("palette texture dimension mismatch")
+        p = at+20
+        k = source[p] if p < len(source) else 0
+        if not 1 <= k <= 15 or p+1+k+n > len(source):
+            raise ValueError("invalid packed local palette")
+        oldpal = source[p+1:p+1+k]
+        pixels = source[p+1+k:p+1+k+n]
+        if len(set(oldpal)) != k or 0 in oldpal or max(pixels, default=0) > k:
+            raise ValueError("invalid packed texture local indices")
+        vals = list(oldpal)
+        if mode == "palette_freq" or mode == "palette_freq_asc":
+            cnt = collections.Counter(pixels)
+            if mode == "palette_freq":
+                vals.sort(key=lambda col: (-cnt[oldpal.index(col)+1], col))
+            else:
+                vals.sort(key=lambda col: (cnt[oldpal.index(col)+1], col))
+        elif mode == "palette_reverse":
+            vals.reverse()
+        elif mode == "palette_first":
+            order = list(dict.fromkeys(q for q in pixels if q))
+            first = [oldpal[q-1] for q in order]
+            vals = first + [c for c in oldpal if c not in first]
+        else:
+            raise ValueError("unknown palette method")
+        if bytes(vals) == oldpal:
+            continue
+        tr = bytearray(range(256))
+        lookup = {col: i+1 for i, col in enumerate(vals)}
+        for i, col in enumerate(oldpal):
+            tr[i+1] = lookup[col]
+        newpix = pixels.translate(bytes(tr))
+        assert bytes(([0]+vals)[q] for q in newpix) == bytes(([0]+list(oldpal))[q] for q in pixels)
+        output[p+1:p+1+k] = bytes(vals)
+        output[p+1+k:p+1+k+n] = newpix
+        changed += 1
+    if len(output) != len(source):
+        raise AssertionError("palette change altered raw pack length")
+    return bytes(output), changed
+
+
+def _cel_pal_choose_pack(raw, entries, baseline=None):
+    original = bytes(raw)
+    if baseline is None:
+        baseline = lz(original)   # the existing 11-option Celeste encoder picker
+    best_z = baseline
+    best_raw = original
+    best_mode = "unchanged"
+    best_count = 0
+    aligned = (len(best_z)+3) & ~3
+    for mode in ("palette_freq", "palette_first", "palette_reverse", "palette_freq_asc"):
+        candidate, nchanged = _cel_pal_reorder_pack(original, entries, mode)
+        if not nchanged:
+            continue
+        z1 = lzma.compress(candidate, format=lzma.FORMAT_RAW,
+                           filters=[{"id": lzma.FILTER_LZMA1, "preset":9,
+                                     "dict_size":DICT,"lc":0,"lp":0,"pb":0}])
+        z2 = lzma.compress(candidate, format=lzma.FORMAT_RAW,
+                           filters=[{"id": lzma.FILTER_LZMA1, "preset":9|lzma.PRESET_EXTREME,
+                                     "dict_size":DICT,"lc":0,"lp":0,"pb":0}])
+        candidate_z = z1 if len(z1) <= len(z2) else z2
+        size = (len(candidate_z)+3) & ~3
+        if size < aligned:
+            best_z, best_raw, best_mode, best_count = candidate_z, candidate, mode, nchanged
+            aligned = size
+    return best_z, best_raw, best_mode, best_count
+
+
+def _cel_pal_pack_stream(raw, ids):
+    # TEX.list[].offset and .idx were populated when packs were constructed.
+    entries = [(TEX.list[tid].offset, TEX.list[tid].idx.size) for tid in ids
+               if TEX.list[tid].kind == 0]
+    z, _, _, _ = _cel_pal_choose_pack(raw, entries)
+    return z
+
 def main():
     fgsets = T.read_tilesets("ForegroundTiles")
     bgsets = T.read_tilesets("BackgroundTiles")
@@ -2092,7 +2206,7 @@ def main():
     w.u16(0)
     comp_total = 0
     for raw, ids in packs:
-        z = lz(raw)
+        z = _cel_pal_pack_stream(raw, ids)
         comp_total += len(z)
         w.u32(len(blobs))
         w.u32(len(z))
